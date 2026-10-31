@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f3e2c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Woods Map</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="lib/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map"></div>
+  <div id="crosshair" aria-hidden="true"></div>
+
+  <div id="topbar">
+    <button id="coords" title="Tap to copy coordinates">—</button>
+    <div id="navinfo" hidden>
+      <span id="navtext"></span>
+      <button id="navStop" aria-label="Stop navigating">✕</button>
+    </div>
+  </div>
+
+  <nav id="bar">
+    <button id="btnLocate"><span class="ic">◎</span>Locate</button>
+    <button id="btnPinMe"><span class="ic">📍</span>Pin me</button>
+    <button id="btnPinCenter"><span class="ic">✚</span>Pin center</button>
+    <button id="btnPins"><span class="ic">☰</span>Pins</button>
+    <button id="btnOffline"><span class="ic">⬇</span>Offline</button>
+    <button id="btnMore"><span class="ic">⋯</span>More</button>
+  </nav>
+
+  <div id="backdrop" hidden></div>
+
+  <section id="editor" class="sheet" hidden>
+    <h2 id="editorTitle">New pin</h2>
+    <label>Name
+      <input id="pinName" type="text" autocomplete="off" maxlength="60" placeholder="e.g. North ridge stand">
+    </label>
+    <label>Type
+      <select id="pinCat"></select>
+    </label>
+    <label>Notes
+      <textarea id="pinNotes" rows="3" maxlength="500" placeholder="Wind direction, access trail, sign seen..."></textarea>
+    </label>
+    <div class="muted" id="pinCoords"></div>
+    <div class="row">
+      <button id="btnPinSave" class="primary">Save</button>
+      <button id="btnPinCancel">Cancel</button>
+      <button id="btnPinDelete" class="danger">Delete</button>
+    </div>
+  </section>
+
+  <section id="pinsSheet" class="sheet" hidden>
+    <h2>My pins</h2>
+    <input id="pinSearch" type="search" placeholder="Search pins" autocomplete="off">
+    <ul id="pinList"></ul>
+  </section>
+
+  <section id="offlineSheet" class="sheet" hidden>
+    <h2>Offline maps</h2>
+    <p class="muted">Zoom the map so it covers the area you hunt, then download it. Saved tiles work with no cell service. Minnesota only.</p>
+    <label>Map to save
+      <select id="offLayer">
+        <option value="topo">Topo (contours)</option>
+        <option value="sat">Satellite</option>
+      </select>
+    </label>
+    <label>Detail level
+      <select id="offZoom">
+        <option value="14">Good (zoom 14)</option>
+        <option value="15" selected>Better (zoom 15)</option>
+        <option value="16">Best (zoom 16, large)</option>
+      </select>
+    </label>
+    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save DNR public-land layers (WMAs, walk-in access)</label>
+    <div id="offEstimate" class="estimate"></div>
+    <progress id="offProgress" value="0" max="1" hidden></progress>
+    <div id="offStatus" class="muted"></div>
+    <div class="row">
+      <button id="btnOffDownload" class="primary">Download this area</button>
+      <button id="btnOffCancel" hidden>Stop</button>
+    </div>
+    <hr>
+    <div id="offStored" class="muted"></div>
+    <div class="row">
+      <button id="btnOffClear" class="danger">Delete saved maps</button>
+    </div>
+    <p class="muted small">Street map is not available offline.</p>
+  </section>
+
+  <section id="moreSheet" class="sheet" hidden>
+    <h2>Backup &amp; share</h2>
+    <p class="muted">Pins are stored on this phone. Export a backup, or send your pins to a friend and have them import the file.</p>
+    <div class="row">
+      <button id="btnExportJson">Export pins (backup)</button>
+      <button id="btnExportGpx">Export as GPX</button>
+    </div>
+    <div class="row">
+      <button id="btnImport">Import pins</button>
+      <input id="importFile" type="file" accept=".json,.gpx,application/json,application/gpx+xml,text/xml" hidden>
+    </div>
+    <p class="muted small" id="aboutText">Maps: USGS The National Map, OpenStreetMap contributors. Public land layers: Minnesota DNR. Boundaries are for reference only; always confirm access rules and land ownership before you hunt.</p>
+  </section>
+
+  <div id="toast" hidden></div>
+
+  <script src="lib/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
