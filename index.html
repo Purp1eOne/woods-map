@@ -100,6 +100,66 @@
     </div>
   </section>
 
+  <section id="helpSheet" class="sheet" hidden>
+    <h2>How to use Woods Map</h2>
+    <div class="help">
+      <h3>First time</h3>
+      <p>Open the app on wifi and allow location when it asks. Tap <b>Locate</b> at the bottom left. The blue dot is you. The pale circle around it shows how accurate the GPS is. It is smaller in the open than in thick woods.</p>
+
+      <h3>Maps and layers</h3>
+      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b> or <b>Street</b>. Switch on <b>DNR public land</b> to see Wildlife Management Areas, or <b>Walk-in access</b> for southwest Minnesota. The map covers Minnesota only. Street needs a signal. Topo and Satellite can be saved for use offline.</p>
+
+      <h3>Adding pins</h3>
+      <ul>
+        <li><b>Pin me</b> drops a pin where you are standing.</li>
+        <li><b>Pin center</b> drops a pin at the crosshair. Pan and zoom the map first. This is how to mark a spot you are not standing on. The numbers at the top left are the crosshair position.</li>
+        <li>Pressing and holding on the map also starts a pin.</li>
+      </ul>
+      <p>Give it a name, a type (stand, trail camera, harvest, sign, camp, truck, water or other) and notes. A <b>range ring</b> draws a 30 to 200 yard circle around the pin. Trail cameras and harvests also keep a date, and cameras show how long ago you checked them.</p>
+
+      <h3>Using your pins</h3>
+      <p>Tap a pin on the map for <b>Go there</b> and <b>Edit</b>. The <b>Pins</b> button lists every pin, nearest first once GPS is on. You can search, show only one pin type, or tap <b>Edit</b> on any row to change or delete a pin.</p>
+
+      <h3>Finding your way</h3>
+      <ul>
+        <li><b>Go there</b> shows a yellow bar with distance, walking time and compass direction, plus a dashed line on the map. Tap the ✕ to stop.</li>
+        <li>The <b>Truck</b> button starts Go there to your nearest pin of type Parking / truck.</li>
+        <li>In <b>Pins</b>, <b>Measure</b> gives distance and time between any two points.</li>
+      </ul>
+      <p>Times are straight-line at the pace you set under <b>More</b>. Brush, water and hills make a real walk longer, so use a slower pace for rough ground.</p>
+
+      <h3>Recording your walk</h3>
+      <p>Tap <b>Track</b>, then <b>Start recording</b>. It records the path you walk so you can follow it back out. The screen stays on while it records, and it only records while the app is open. Saved walks can be shown, hidden, deleted or exported as GPX.</p>
+
+      <h3>Sunrise and shooting hours</h3>
+      <p>The chip at the top shows sunrise and sunset for where you are. Tap it for the big game shooting window, which is 30 minutes before sunrise to 30 minutes after sunset. Other seasons have different hours, so check the current DNR regulations.</p>
+
+      <h3>Coordinates</h3>
+      <p>Tap the coordinates at the top left to copy them, or to type in a spot and jump there or pin it. It reads <b>46.3045, -94.2001</b> and also <b>N 46° 18.270 W 94° 12.006</b>.</p>
+
+      <h3>Before you leave: save maps for offline</h3>
+      <ol>
+        <li>Do this on wifi. Pan and zoom so the screen covers the area you hunt.</li>
+        <li>Tap <b>Offline</b>, choose Topo or Satellite and a detail level, then <b>Download this area</b>.</li>
+        <li>Repeat for the other map if you want both.</li>
+        <li>Turn on airplane mode and check that the map still shows.</li>
+      </ol>
+      <p>Your pins, tracks and GPS dot work with no signal. Saved maps live on your own phone, so each person downloads their own.</p>
+
+      <h3>Backup and sharing</h3>
+      <p>Under <b>More</b>, <b>Export pins (backup)</b> saves a file of your pins. <b>Import pins</b> loads one. To share spots, send the file to a friend and have them import it. Export now and then, since pins live only on this phone.</p>
+
+      <h3>Good to know</h3>
+      <ul>
+        <li>GPS under thick cover or in a deep valley can be off by 20 to 30 yards or more. When you drop a pin, wait for the circle to shrink.</li>
+        <li>Public land boundaries are for reference. Private land is not shown. Confirm access rules and ownership before you hunt.</li>
+        <li>GPS and Track use extra battery, more so in the cold.</li>
+        <li>Pick Dark, Light or Match my phone under <b>More</b>.</li>
+      </ul>
+    </div>
+    <div class="row"><button id="btnHelpClose" class="primary">Close</button></div>
+  </section>
+
   <section id="sunSheet" class="sheet" hidden>
     <h2>Sunrise &amp; shooting hours</h2>
     <label>Date
@@ -181,6 +241,7 @@
   </section>
 
   <section id="moreSheet" class="sheet" hidden>
+    <div class="row tight"><button id="btnHelp" class="primary">How to use this app</button></div>
     <h2>Settings &amp; backup</h2>
     <label>Theme
       <select id="theme"></select>

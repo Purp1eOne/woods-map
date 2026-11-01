@@ -464,3 +464,10 @@ progress { width: 100%; height: 12px; margin: 6px 0; }
 /* The layers menu opens over the side buttons and, on narrow phones, the top chips, so hide them while it is open. */
 body:has(.leaflet-control-layers-expanded) #fab,
 body:has(.leaflet-control-layers-expanded) #topbar { visibility: hidden; }
+
+/* ---- help guide ---- */
+.help h3 { margin: 16px 0 4px; font-size: 16px; }
+.help h3:first-child { margin-top: 0; }
+.help p, .help li { font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
+.help ul, .help ol { margin: 0 0 6px; padding-left: 20px; }
+.help b { font-weight: 700; }

@@ -21,19 +21,24 @@ A simple hunting map for Minnesota that installs on an Android phone like an app
 - MN DNR public land overlays: Wildlife Management Areas (on by default) and walk-in access sites (SW Minnesota). Switch them on/off from the layers button at the top right
 - Limited to Minnesota
 
+## How to use it
+
+The full guide is inside the app: tap **More**, then **How to use this app**. Friends see it too.
+
 ## Put it online (free) so you and friends can install it
 
 The app must be served over **https** for GPS and offline maps to work. Easiest free options:
 
-### Option A: Netlify Drop (no account tools, about 2 minutes)
-1. Go to https://app.netlify.com/drop
-2. Drag the whole `hunting-map` folder (unzipped) onto the page.
-3. Netlify gives you a link like `https://something.netlify.app`. Send that link to friends.
+### GitHub Pages (recommended)
+1. Create a free GitHub account and a new **public** repository.
+2. Upload the contents of this folder (the files inside `hunting-map`, not the folder itself) with **Add file > Upload files**, then **Commit changes**.
+3. Settings > Pages > deploy from the `main` branch, root folder.
+4. Your link will be `https://<your-username>.github.io/<repo-name>/`. It can take a couple of minutes to appear.
+5. To update later, upload the changed files again the same way.
 
-### Option B: GitHub Pages
-1. Create a GitHub repo and upload the contents of this folder.
-2. Settings > Pages > deploy from the `main` branch, root folder.
-3. Your link will be `https://<your-username>.github.io/<repo-name>/`.
+### Netlify Drop (works, but adds a "Powered by Netlify" badge on free plans)
+1. Go to https://app.netlify.com/drop and drag the unzipped folder onto the page.
+2. Claim the site with a free account so it stays online.
 
 ## Install on Android
 1. Open the link in **Chrome** on the phone.

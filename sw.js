@@ -1,5 +1,5 @@
 /* Woods Map service worker: app shell works offline, USGS map tiles are cached. */
-const SHELL = 'woods-shell-v5';
+const SHELL = 'woods-shell-v6';
 const TILES = 'woods-tiles-v1';
 const SHELL_FILES = [
   './',

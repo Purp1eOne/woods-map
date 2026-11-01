@@ -194,10 +194,12 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'pinsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet'];
+  const SHEETS = ['editor', 'pinsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
   function showSheet(id) {
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });
     $('backdrop').hidden = false;
+    clearTimeout(toastTimer); // a message left on screen would float over the sheet
+    $('toast').hidden = true;
   }
   function closeSheets() {
     SHEETS.forEach((s) => { $(s).hidden = true; });
@@ -1249,6 +1251,16 @@
     if (mq.addEventListener) mq.addEventListener('change', again); else if (mq.addListener) mq.addListener(again);
   }
   applyTheme();
+
+  // ---------- Help ----------
+  $('btnHelp').addEventListener('click', () => { showSheet('helpSheet'); $('helpSheet').scrollTop = 0; });
+  $('btnHelpClose').addEventListener('click', closeSheets);
+  try {
+    if (!localStorage.getItem('woodsmap.seen.v1')) {
+      localStorage.setItem('woodsmap.seen.v1', '1');
+      setTimeout(() => toast('New here? Tap More, then "How to use this app".', 7000), 1200);
+    }
+  } catch (e) { /* storage unavailable: skip the hint */ }
 
   // ---------- Service worker ----------
   if ('serviceWorker' in navigator) {
