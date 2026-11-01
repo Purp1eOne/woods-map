@@ -107,7 +107,7 @@
       <p>Open the app on wifi and allow location when it asks. Tap <b>Locate</b> at the bottom left. The blue dot is you. The pale circle around it shows how accurate the GPS is. It is smaller in the open than in thick woods.</p>
 
       <h3>Maps and layers</h3>
-      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b> or <b>Street</b>. Switch on <b>DNR public land</b> to see Wildlife Management Areas, or <b>Walk-in access</b> for southwest Minnesota. The map covers Minnesota only. Street needs a signal. Topo and Satellite can be saved for use offline.</p>
+      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b> or <b>Street</b>. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo and Satellite can be saved for use offline.</p>
 
       <h3>Adding pins</h3>
       <ul>
@@ -132,7 +132,7 @@
       <p>Tap <b>Track</b>, then <b>Start recording</b>. It records the path you walk so you can follow it back out. The screen stays on while it records, and it only records while the app is open. Saved walks can be shown, hidden, deleted or exported as GPX.</p>
 
       <h3>Sunrise and shooting hours</h3>
-      <p>The chip at the top shows sunrise and sunset for where you are. Tap it for the big game shooting window, which is 30 minutes before sunrise to 30 minutes after sunset. Other seasons have different hours, so check the current DNR regulations.</p>
+      <p>The chip at the top shows sunrise and sunset for where you are. Tap it for the big game / deer shooting window, which is 30 minutes before sunrise to 30 minutes after sunset in both Minnesota and Illinois. Other seasons have different hours, so check the current regulations.</p>
 
       <h3>Coordinates</h3>
       <p>Tap the coordinates at the top left to copy them, or to type in a spot and jump there or pin it. It reads <b>46.3045, -94.2001</b> and also <b>N 46° 18.270 W 94° 12.006</b>.</p>
@@ -173,7 +173,7 @@
       <dt>Big game shooting ends</dt><dd id="sunLast">—</dd>
       <dt>Daylight</dt><dd id="sunLen">—</dd>
     </dl>
-    <p class="muted small">Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.</p>
+    <p class="muted small" id="sunRules"></p>
     <div class="row"><button id="btnSunClose">Close</button></div>
   </section>
 
@@ -210,7 +210,7 @@
 
   <section id="offlineSheet" class="sheet" hidden>
     <h2>Offline maps</h2>
-    <p class="muted">Zoom the map so it covers the area you hunt, then download it. Saved tiles work with no cell service. Minnesota only.</p>
+    <p class="muted">Zoom the map so it covers the area you hunt, then download it. Saved tiles work with no cell service. Minnesota and Illinois only.</p>
     <label>Map to save
       <select id="offLayer">
         <option value="topo">Topo (contours)</option>
@@ -224,7 +224,7 @@
         <option value="16">Best (zoom 16, large)</option>
       </select>
     </label>
-    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save DNR public-land layers (WMAs, walk-in access)</label>
+    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save Minnesota DNR public-land layers (WMAs, walk-in access)</label>
     <div id="offEstimate" class="estimate"></div>
     <progress id="offProgress" value="0" max="1" hidden></progress>
     <div id="offStatus" class="muted"></div>
@@ -259,7 +259,7 @@
       <button id="btnImport">Import pins</button>
       <input id="importFile" type="file" accept=".json,.gpx,application/json,application/gpx+xml,text/xml" hidden>
     </div>
-    <p class="muted small" id="aboutText">Maps: USGS The National Map, OpenStreetMap contributors. Public land layers: Minnesota DNR. Boundaries are for reference only; always confirm access rules and land ownership before you hunt.</p>
+    <p class="muted small" id="aboutText">Maps: USGS The National Map, OpenStreetMap contributors. Public land layers: Minnesota DNR (Minnesota only). Boundaries are for reference only; always confirm access rules and land ownership before you hunt.</p>
   </section>
 
   <div id="toast" hidden></div>

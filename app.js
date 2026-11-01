@@ -2,7 +2,18 @@
   'use strict';
 
   // ---------- Config ----------
-  const MN = L.latLngBounds([43.45, -97.3], [49.45, -89.4]); // Minnesota, a little padded
+  const MN_BOX = L.latLngBounds([43.45, -97.3], [49.45, -89.4]); // Minnesota, a little padded
+  const IL_BOX = L.latLngBounds([36.9, -91.6], [42.6, -87.0]); // Illinois, a little padded
+  // The map covers Minnesota and Illinois (and the land between, so you can scroll from one to the other).
+  const MN = L.latLngBounds([36.9, -97.3], [49.45, -87.0]);
+  const inMN = (lat, lng) => MN_BOX.contains([lat, lng]);
+  const inIL = (lat, lng) => IL_BOX.contains([lat, lng]);
+  const inRegion = (lat, lng) => MN.contains([lat, lng]);
+  // Hunting-hour rules by place. Both states: one-half hour before sunrise to one-half hour after sunset for deer / big game.
+  function rulesFor(lat, lng) {
+    if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
+    return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
+  }
   const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
@@ -33,13 +44,15 @@
   // so each 256px tile is requested as a small transparent image for one web-mercator box.
   const OVERLAYS = {
     wma: {
-      name: 'DNR public land (WMAs)',
+      name: 'MN DNR public land (WMAs)',
       url: 'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_wildlife_mgmt_areas_pub/MapServer',
+      box: MN_BOX,
       opacity: 0.7
     },
     wia: {
-      name: 'Walk-in access (SW MN)',
+      name: 'MN walk-in access (SW)',
       url: 'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_walk_in_access_sites/MapServer',
+      box: MN_BOX,
       opacity: 0.7
     }
   };
@@ -162,7 +175,7 @@
     overlayLayers[key] = new ArcExport(o.url, {
       attribution: 'MN DNR',
       maxZoom: 18,
-      bounds: MN.pad(0.1),
+      bounds: o.box.pad(0.1),
       opacity: o.opacity,
       zIndex: 5
     });
@@ -364,8 +377,8 @@
 
   // Pin at the phone's own location. The map only covers Minnesota, so warn if you're elsewhere.
   function pinHere(lat, lng) {
-    if (!MN.contains([lat, lng]) && !confirm('You are outside Minnesota, so this pin will not show on the map. Save it anyway?')) {
-      toast('Not saved. To mark a spot in Minnesota, move the map there and use Pin center.', 5000);
+    if (!MN.contains([lat, lng]) && !confirm('You are outside the map area (Minnesota and Illinois), so this pin will not show on the map. Save it anyway?')) {
+      toast('Not saved. To mark a spot in Minnesota or Illinois, move the map there and use Pin center.', 5000);
       return;
     }
     openEditor({ lat, lng, cat: 'stand', name: '', notes: '' }, true);
@@ -422,12 +435,12 @@
       const s = document.createElement('span');
       s.className = 'ps';
       const outside = !MN.contains([p.lat, p.lng]);
-      s.textContent = [c.label, ageText(p), outside ? 'outside Minnesota' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
+      s.textContent = [c.label, ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
       txt.append(t, s);
       b.append(ic, txt);
       b.addEventListener('click', () => {
         if (outside) {
-          return toast('That pin is outside Minnesota, so it cannot be shown on the map. Use Edit to change or delete it.', 5000);
+          return toast('That pin is outside the map area, so it cannot be shown on the map. Use Edit to change or delete it.', 5000);
         }
         closeSheets();
         map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16), { duration: 0.8 });
@@ -649,7 +662,7 @@
     const a = areaBounds();
     const btn = $('btnOffDownload');
     if (!a) {
-      $('offEstimate').textContent = 'Move the map over Minnesota first.';
+      $('offEstimate').textContent = 'Move the map over Minnesota or Illinois first.';
       btn.disabled = true;
       return;
     }
@@ -709,6 +722,7 @@
       // Probe first: if the DNR server won't allow its images to be saved, skip those layers cleanly.
       const ovUrls = [];
       for (const o of Object.values(OVERLAYS)) {
+        if (!o.box.intersects(L.latLngBounds([a.s, a.w], [a.n, a.e]))) continue;
         for (let z = 8; z <= Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM); z++) {
           const r = tileRange(a, z);
           for (let x = r.x0; x <= r.x1; x++) {
@@ -717,7 +731,8 @@
         }
       }
       let ok = false;
-      try { const probe = await fetch(ovUrls[0], { mode: 'cors' }); ok = probe.ok; } catch (e) { ok = false; }
+      if (!ovUrls.length) ok = true;
+      else try { const probe = await fetch(ovUrls[0], { mode: 'cors' }); ok = probe.ok; } catch (e) { ok = false; }
       if (ok) urls.push(...ovUrls);
       else toast('The DNR server would not let me save its public-land layers. Saving the base map only.', 6000);
     }
@@ -867,7 +882,7 @@
   });
 
   // ---------- Dates ----------
-  const CHI = 'America/Chicago'; // all of Minnesota is on Central time
+  const CHI = 'America/Chicago'; // Minnesota and Illinois are both on Central time
   const chiDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: CHI, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d || new Date());
   function daysSince(ymd) {
     const a = Date.parse(ymd + 'T00:00:00Z'), b = Date.parse(chiDate() + 'T00:00:00Z');
@@ -930,7 +945,7 @@
     const [y, m, d] = ymd.split('-').map(Number);
     const t = sunTimes(y, m, d, pt.lat, pt.lng);
     if (!t) return null;
-    return { rise: t.rise, set: t.set, first: new Date(+t.rise - 1800000), last: new Date(+t.set + 1800000), where: pt.where };
+    return { lat: pt.lat, lng: pt.lng, rise: t.rise, set: t.set, first: new Date(+t.rise - 1800000), last: new Date(+t.set + 1800000), where: pt.where };
   }
   function updateSunChip() {
     const info = sunInfo(chiDate());
@@ -941,6 +956,7 @@
     const info = sunInfo(ymd);
     if (!info) { $('sunWhere').textContent = 'No sunrise or sunset to show for that date.'; return; }
     $('sunWhere').textContent = 'Times for ' + info.where + '. They shift about 4 minutes for every degree you move east or west.';
+    $('sunRules').textContent = rulesFor(info.lat, info.lng).text;
     $('sunFirst').textContent = fmtClock(info.first);
     $('sunRise').textContent = fmtClock(info.rise);
     $('sunSet').textContent = fmtClock(info.set);
@@ -1169,7 +1185,7 @@
     if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) [lat, lng] = [lng, lat];
     if (letters.includes('S')) lat = -Math.abs(lat);
     if (letters.includes('W')) lng = -Math.abs(lng);
-    // The map only covers Minnesota, so a longitude typed without a minus sign means west.
+    // The map only covers the Midwest, so a longitude typed without a minus sign means west.
     if (!letters.includes('E') && !letters.includes('W') && lng > 0 && lng < 100) lng = -lng;
     if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
     return { lat, lng };
@@ -1184,7 +1200,7 @@
   function gotoFromInput() {
     const pt = parseCoords($('gcInput').value);
     if (!pt) { $('gcMsg').textContent = 'Could not read that. Try 46.3045, -94.2001 or N 46° 18.270 W 94° 12.006'; return null; }
-    if (!MN.contains([pt.lat, pt.lng])) { $('gcMsg').textContent = 'That spot is outside Minnesota. The map only covers Minnesota.'; return null; }
+    if (!MN.contains([pt.lat, pt.lng])) { $('gcMsg').textContent = 'That spot is outside the map. It covers Minnesota and Illinois.'; return null; }
     map.setView([pt.lat, pt.lng], Math.max(map.getZoom(), 16));
     return pt;
   }

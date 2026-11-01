@@ -1,7 +1,7 @@
 {
   "name": "Woods Map",
   "short_name": "Woods Map",
-  "description": "Simple hunting map for Minnesota: topo, satellite, GPS, pins and offline maps.",
+  "description": "Simple hunting map for Minnesota and Illinois: topo, satellite, GPS, pins and offline maps.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -1,6 +1,6 @@
 # Woods Map
 
-A simple hunting map for Minnesota that installs on an Android phone like an app.
+A simple hunting map for Minnesota and Illinois that installs on an Android phone like an app.
 
 - USGS topo (contour lines), USGS satellite, and street map
 - Live GPS dot
@@ -8,7 +8,7 @@ A simple hunting map for Minnesota that installs on an Android phone like an app
 - Pin types: stand, camp, truck, sign, water, other, plus notes
 - "Go there" shows distance and compass direction to any pin
 - Walking time: "Go there" shows distance, estimated time and direction. Pins > Measure works out distance and time between any two points (pins, your location, or the map center). Set your pace under More. These are straight-line estimates; real routes take longer
-- Sun chip at the top (tap it): sunrise and sunset for your location, plus Minnesota big-game shooting hours (30 min before sunrise to 30 min after sunset). Works with no signal. Other seasons differ, so check the current DNR regulations
+- Sun chip at the top (tap it): sunrise and sunset for your location, plus the Minnesota or Illinois deer/big-game shooting hours depending on where you are (30 min before sunrise to 30 min after sunset). Works with no signal. Other seasons differ, so check the current DNR regulations
 - Track button: records the path you walk, keeps the screen awake while recording, saves walks you can show/hide/delete and export as GPX. It only records while the screen is on and the app is open
 - Truck button: one tap starts "Go there" to your nearest Parking / truck pin
 - Range rings: pick 30, 50, 100, 150 or 200 yards in the pin editor to draw a ring around a stand
@@ -19,7 +19,7 @@ A simple hunting map for Minnesota that installs on an Android phone like an app
 - Offline maps: save the areas you hunt (topo and satellite) for no-cell-service use
 - Export/import pins (JSON backup or GPX) to back up or share with friends
 - MN DNR public land overlays: Wildlife Management Areas (on by default) and walk-in access sites (SW Minnesota). Switch them on/off from the layers button at the top right
-- Limited to Minnesota
+- Covers Minnesota and Illinois. Illinois has the topo, satellite and street maps, but the DNR public-land overlays are Minnesota only
 
 ## How to use it
 
