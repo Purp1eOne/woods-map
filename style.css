@@ -1,21 +1,98 @@
+/* Woods Map styles. Every color comes from the palette below, so the dark and light themes stay consistent. */
+
+/* Dark is the default. */
 :root {
-  /* One dark palette for the whole app: the bar, the sheets, the map menus and the pin popups */
   color-scheme: dark;
-  --bg: #1f2a1d;          /* bottom bar and page */
-  --panel: #263326;       /* sheets and popups, one step lighter than the bar */
-  --panel-2: #1a2318;     /* text fields, set into the panel */
-  --btn: #33442f;         /* buttons */
+  --bg: #1f2a1d;            /* bottom bar, top chips, side buttons, layers menu */
+  --panel: #263326;         /* sheets and popups, one step off the bar */
+  --panel-2: #1a2318;       /* text fields */
+  --btn: #33442f;
   --btn-line: #4b6046;
-  --line: #3a4a36;        /* dividers and borders */
+  --line: #3a4a36;
   --ink: #eef2e6;
   --muted: #a6b19b;
   --accent: #3f7a33;
   --accent-line: #62a352;
   --danger: #ffa190;
   --danger-line: #7d4339;
+  --chip-bg: rgba(31, 42, 29, .88);
+  --fab-bg: rgba(31, 42, 29, .92);
+  --bar-ink: #dfe6d4;
+  --bar-press: #2e3d2a;
+  --bar-on: #8fe07c;
+  --toast-bg: rgba(31, 42, 29, .97);
+  --map-bg: #2a3427;
+  --attr-bg: rgba(31, 42, 29, .85);
+  --attr-ink: #c3cdb8;
+  --attr-link: #9ccf8c;
+  --check: #6fbf5c;
+  --placeholder: #7d8a74;
+  --shadow: rgba(0, 0, 0, .5);
+
   --bar-h: 62px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f4ec;
+  --panel: #fbfcf8;
+  --panel-2: #ffffff;
+  --btn: #e8ecdf;
+  --btn-line: #bcc6b0;
+  --line: #cdd5c2;
+  --ink: #1b2419;
+  --muted: #56634e;
+  --accent: #2f6b27;
+  --accent-line: #2f6b27;
+  --danger: #a52a1a;
+  --danger-line: #deaea5;
+  --chip-bg: rgba(242, 244, 236, .94);
+  --fab-bg: rgba(242, 244, 236, .96);
+  --bar-ink: #26331f;
+  --bar-press: #dfe4d3;
+  --bar-on: #2f6b27;
+  --toast-bg: rgba(251, 252, 248, .97);
+  --map-bg: #dfe5d6;
+  --attr-bg: rgba(242, 244, 236, .88);
+  --attr-ink: #3a4636;
+  --attr-link: #2f6b27;
+  --check: #2f6b27;
+  --placeholder: #8a9680;
+  --shadow: rgba(0, 0, 0, .25);
+}
+
+/* "Match my phone" */
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] {
+    color-scheme: light;
+    --bg: #f2f4ec;
+    --panel: #fbfcf8;
+    --panel-2: #ffffff;
+    --btn: #e8ecdf;
+    --btn-line: #bcc6b0;
+    --line: #cdd5c2;
+    --ink: #1b2419;
+    --muted: #56634e;
+    --accent: #2f6b27;
+    --accent-line: #2f6b27;
+    --danger: #a52a1a;
+    --danger-line: #deaea5;
+    --chip-bg: rgba(242, 244, 236, .94);
+    --fab-bg: rgba(242, 244, 236, .96);
+    --bar-ink: #26331f;
+    --bar-press: #dfe4d3;
+    --bar-on: #2f6b27;
+    --toast-bg: rgba(251, 252, 248, .97);
+    --map-bg: #dfe5d6;
+    --attr-bg: rgba(242, 244, 236, .88);
+    --attr-ink: #3a4636;
+    --attr-link: #2f6b27;
+    --check: #2f6b27;
+    --placeholder: #8a9680;
+    --shadow: rgba(0, 0, 0, .25);
+  }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -30,12 +107,12 @@ html, body {
   overscroll-behavior: none;
 }
 
-#map { position: fixed; inset: 0; bottom: calc(var(--bar-h) + var(--safe-b)); background: #2a3427; }
+[hidden] { display: none !important; }
 
-/* Leaflet controls sit above the bottom bar already since the map ends there */
-.leaflet-top.leaflet-right { margin-top: calc(var(--safe-t) + 44px); }
-.leaflet-control-layers { border-radius: 10px; }
-.leaflet-control-layers-toggle { width: 44px; height: 44px; }
+#map { position: fixed; inset: 0; bottom: calc(var(--bar-h) + var(--safe-b)); background: var(--map-bg); }
+
+/* Leaflet's top-right stack lines up with the top chips */
+.leaflet-top.leaflet-right { margin-top: calc(var(--safe-t) - 2px); }
 .leaflet-control-scale-line { font-size: 11px; }
 
 #crosshair {
@@ -61,7 +138,7 @@ html, body {
   position: fixed;
   top: calc(var(--safe-t) + 8px);
   left: 8px;
-  right: 60px;
+  right: 74px;
   z-index: 600;
   display: flex;
   flex-direction: column;
@@ -70,15 +147,19 @@ html, body {
   pointer-events: none;
 }
 #topbar > * { pointer-events: auto; }
+#toprow { display: flex; flex-wrap: wrap; gap: 6px; }
 
 #coords, #sunChip, #filterChip {
   font: 600 13px ui-monospace, Menlo, Consolas, monospace;
-  background: rgba(31, 42, 29, .88);
-  color: #eef2e6;
+  background: var(--chip-bg);
+  color: var(--ink);
   border: 0;
   border-radius: 8px;
   padding: 7px 10px;
+  box-shadow: 0 1px 5px var(--shadow);
 }
+#sunChip { font-family: system-ui, sans-serif; }
+#filterChip { background: #e8b53a; color: #231b05; font-family: system-ui, sans-serif; }
 
 #navinfo {
   display: flex;
@@ -91,8 +172,9 @@ html, body {
   padding: 8px 10px 8px 12px;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  max-width: calc(100vw - 92px);
 }
-#navinfo[hidden] { display: none; }
+#navtext { line-height: 1.25; }
 #navStop {
   border: 0;
   background: rgba(0, 0, 0, .15);
@@ -113,13 +195,13 @@ html, body {
   display: flex;
   background: var(--bg);
   z-index: 700;
-  border-top: 1px solid #3a4a36;
+  border-top: 1px solid var(--line);
 }
 #bar button {
   flex: 1;
   border: 0;
   background: transparent;
-  color: #dfe6d4;
+  color: var(--bar-ink);
   font-size: 11px;
   font-weight: 600;
   display: flex;
@@ -130,11 +212,12 @@ html, body {
   padding: 0;
 }
 #bar button .ic { font-size: 22px; line-height: 1; }
-#bar button:active { background: #2e3d2a; }
-#bar button.on { color: #8fe07c; }
+#bar button:active { background: var(--bar-press); }
+#bar button.on { color: var(--bar-on); }
 
 #backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 800; }
 
+/* ---- sheets ---- */
 .sheet {
   position: fixed;
   left: 0;
@@ -144,14 +227,16 @@ html, body {
   max-height: 82vh;
   overflow-y: auto;
   background: var(--panel);
+  color: var(--ink);
   border-radius: 16px 16px 0 0;
   padding: 16px 16px calc(16px + var(--safe-b));
   border-top: 1px solid var(--line);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, .5);
+  box-shadow: 0 -6px 24px var(--shadow);
 }
-.sheet[hidden], #backdrop[hidden], #toast[hidden] { display: none; }
 .sheet h2 { margin: 0 0 12px; font-size: 19px; }
+.sheet h3 { margin: 0 0 6px; font-size: 16px; }
 .sheet label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 12px; }
+.sheet label.plain { margin-top: 2px; }
 .sheet input[type="text"], .sheet input[type="search"], .sheet input[type="date"], .sheet select, .sheet textarea {
   display: block;
   width: 100%;
@@ -164,11 +249,14 @@ html, body {
   color: var(--ink);
 }
 .sheet input[type="search"] { margin: 0 0 10px; }
+::placeholder { color: var(--placeholder); opacity: 1; }
+input, select, textarea, progress { accent-color: var(--check); }
 
 .sheet label.check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink); font-weight: 500; }
 .sheet label.check input { width: 22px; height: 22px; margin: 0; flex: none; }
 
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.row.tight { margin: 0 0 8px; }
 .row button, .sheet button {
   font: 600 15px system-ui, sans-serif;
   padding: 12px 14px;
@@ -184,11 +272,15 @@ button.danger { color: var(--danger); border-color: var(--danger-line); }
 .muted { color: var(--muted); font-size: 14px; }
 .muted.small { font-size: 12px; }
 .estimate { font-weight: 700; margin: 4px 0 8px; }
+.mono { font: 600 15px ui-monospace, Menlo, Consolas, monospace; white-space: pre-line; margin: 4px 0 8px; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 progress { width: 100%; height: 12px; margin: 6px 0; }
-progress[hidden] { display: none; }
 
-#pinList { list-style: none; margin: 0; padding: 0; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; margin: 10px 0; }
+.kv dt { color: var(--muted); font-size: 14px; }
+.kv dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+
+#pinList, #trkList { list-style: none; margin: 0; padding: 0; }
 #pinList li { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); }
 #pinList li.muted { padding: 10px 6px; border-bottom: 0; }
 #pinList li .rowmain {
@@ -205,13 +297,16 @@ progress[hidden] { display: none; }
   min-height: 56px;
 }
 #pinList li .rowedit { flex: none; min-height: 40px; padding: 8px 12px; font-size: 14px; }
-.row.tight { margin: 0 0 8px; }
-#navinfo { max-width: calc(100vw - 76px); }
-#navtext { line-height: 1.25; }
 #pinList .pi { font-size: 24px; width: 32px; text-align: center; }
-#pinList .pt { display: block; font-weight: 700; }
-#pinList .ps { display: block; font-size: 13px; color: var(--muted); font-weight: 400; }
+#pinList .pt, #trkList .pt { display: block; font-weight: 700; }
+#pinList .ps, #trkList .ps { display: block; font-size: 13px; color: var(--muted); font-weight: 400; }
 
+#trkList li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+#trkList li.muted { border-bottom: 0; }
+#trkList .trkinfo { flex: 1; min-width: 0; }
+#trkList button { flex: none; min-height: 40px; padding: 8px 12px; font-size: 14px; }
+
+/* ---- map pins ---- */
 .pin {
   width: 36px;
   height: 36px;
@@ -228,7 +323,6 @@ progress[hidden] { display: none; }
   line-height: 32px;
   font-size: 17px;
 }
-
 .me-dot {
   width: 18px;
   height: 18px;
@@ -238,6 +332,7 @@ progress[hidden] { display: none; }
   box-shadow: 0 0 0 2px rgba(41, 121, 255, .35), 0 1px 5px rgba(0, 0, 0, .5);
 }
 
+/* ---- pin popups ---- */
 .pp { min-width: 150px; }
 .pp strong { font-size: 15px; }
 .pp-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -261,7 +356,7 @@ progress[hidden] { display: none; }
   bottom: calc(var(--bar-h) + var(--safe-b) + 14px);
   transform: translateX(-50%);
   max-width: 88vw;
-  background: rgba(31, 42, 29, .97);
+  background: var(--toast-bg);
   color: var(--ink);
   border: 1px solid var(--line);
   padding: 10px 14px;
@@ -269,31 +364,30 @@ progress[hidden] { display: none; }
   font-size: 14px;
   z-index: 1000;
   text-align: center;
+  box-shadow: 0 2px 10px var(--shadow);
 }
 
-/* ---- field tools ---- */
-[hidden] { display: none !important; }
-
-#toprow { display: flex; flex-wrap: wrap; gap: 6px; }
-#filterChip { background: #e8b53a; color: #231b05; font-family: system-ui, sans-serif; }
-#sunChip { font-family: system-ui, sans-serif; }
-
+/* ---- side buttons: Layers, Track and Truck are all the same 56px tile ---- */
 #fab {
   position: fixed;
   right: 10px;
-  top: calc(var(--safe-t) + 108px);
+  top: calc(var(--safe-t) + 72px);
   z-index: 600;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.fab {
+.fab,
+.leaflet-container .leaflet-control-layers:not(.leaflet-control-layers-expanded) {
   width: 56px;
   height: 56px;
   border: 0;
   border-radius: 14px;
-  background: rgba(31, 42, 29, .92);
-  color: #eef2e6;
+  background: var(--fab-bg);
+  color: var(--ink);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+.fab {
   font: 700 10px system-ui, sans-serif;
   display: flex;
   flex-direction: column;
@@ -301,67 +395,72 @@ progress[hidden] { display: none; }
   justify-content: center;
   gap: 2px;
   padding: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
 }
 .fab .fi { font-size: 21px; line-height: 1; }
-.fab:active { background: #2e3d2a; }
-.fab.rec { background: #b3261e; }
+.fab:active { background: var(--bar-press); }
+.fab.rec { background: #b3261e; color: #fff; }
 .fab.rec .fi { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .fab.rec .fi { animation: none; } }
 
-.sheet label.plain { margin-top: 2px; }
-.sheet h3 { margin: 0 0 6px; font-size: 16px; }
-.mono { font: 600 15px ui-monospace, Menlo, Consolas, monospace; white-space: pre-line; margin: 4px 0 8px; }
+/* The layers button: same tile, with a stacked-layers icon drawn in the text color and a label */
+.leaflet-container .leaflet-control-layers .leaflet-control-layers-toggle {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  background-image: none;
+}
+.leaflet-control-layers-toggle::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 15px;
+  width: 26px;
+  height: 26px;
+  background: var(--ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M12 3 21 8 12 13 3 8z'/%3E%3Cpath d='M3 12.5 12 17.5 21 12.5'/%3E%3Cpath d='M3 17 12 22 21 17'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M12 3 21 8 12 13 3 8z'/%3E%3Cpath d='M3 12.5 12 17.5 21 12.5'/%3E%3Cpath d='M3 17 12 22 21 17'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.leaflet-control-layers-toggle::after {
+  content: "Layers";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  text-align: center;
+  font: 700 10px/12px system-ui, sans-serif;
+  color: var(--ink);
+}
 
-.kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; margin: 10px 0; }
-.kv dt { color: var(--muted); font-size: 14px; }
-.kv dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-
-#trkList { list-style: none; margin: 0; padding: 0; }
-#trkList li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-#trkList li.muted { border-bottom: 0; }
-#trkList .trkinfo { flex: 1; min-width: 0; }
-#trkList .pt { display: block; font-weight: 700; }
-#trkList .ps { display: block; font-size: 13px; color: var(--muted); }
-#trkList button { flex: none; min-height: 40px; padding: 8px 12px; font-size: 14px; }
-
-/* The layers menu opens over the side buttons and, on narrow phones, the top chips, so hide them while it is open. */
-body:has(.leaflet-control-layers-expanded) #fab,
-body:has(.leaflet-control-layers-expanded) #topbar { visibility: hidden; }
-
-/* ---- dark theme for the map's own menus and popups ---- */
-input, select, textarea, progress { accent-color: #6fbf5c; }
-::placeholder { color: #7d8a74; opacity: 1; }
-
-.leaflet-container .leaflet-control-layers,
+/* ---- the map's own menus and popups ---- */
 .leaflet-container .leaflet-control-layers-expanded {
   background: var(--bg);
   color: var(--ink);
   border: 1px solid var(--line);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .4);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px var(--shadow);
 }
-.leaflet-container .leaflet-control-layers-toggle { filter: invert(.9); }
 .leaflet-container .leaflet-control-layers-separator { border-top-color: var(--line); }
 .leaflet-container .leaflet-control-layers label { font-size: 15px; }
 
 .leaflet-popup-content-wrapper, .leaflet-popup-tip {
   background: var(--panel);
   color: var(--ink);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, .55);
+  box-shadow: 0 3px 14px var(--shadow);
 }
 .leaflet-popup-content { margin: 12px 16px; }
 .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
 .leaflet-container a.leaflet-popup-close-button:hover, .leaflet-container a.leaflet-popup-close-button:focus { color: var(--ink); }
 
-.leaflet-container .leaflet-control-attribution {
-  background: rgba(31, 42, 29, .85);
-  color: #c3cdb8;
-}
-.leaflet-container .leaflet-control-attribution a { color: #9ccf8c; }
+.leaflet-container .leaflet-control-attribution { background: var(--attr-bg); color: var(--attr-ink); }
+.leaflet-container .leaflet-control-attribution a { color: var(--attr-link); }
 .leaflet-control-scale-line {
-  background: rgba(31, 42, 29, .85);
+  background: var(--attr-bg);
   color: var(--ink);
-  border-color: #c3cdb8;
+  border-color: var(--attr-ink);
   text-shadow: none;
 }
+
+/* The layers menu opens over the side buttons and, on narrow phones, the top chips, so hide them while it is open. */
+body:has(.leaflet-control-layers-expanded) #fab,
+body:has(.leaflet-control-layers-expanded) #topbar { visibility: hidden; }

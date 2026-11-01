@@ -3,7 +3,7 @@
 
   // ---------- Config ----------
   const MN = L.latLngBounds([43.45, -97.3], [49.45, -89.4]); // Minnesota, a little padded
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -1223,6 +1223,32 @@
   }
   $('pinFilter').addEventListener('change', (e) => { filterCat = e.target.value; applyFilter(); renderList(); });
   $('filterChip').addEventListener('click', () => { filterCat = 'all'; $('pinFilter').value = 'all'; applyFilter(); renderList(); });
+
+  // ---------- Theme ----------
+  let theme = recall(STORE.theme, 'dark');
+  if (!['dark', 'light', 'auto'].includes(theme)) theme = 'dark';
+  function applyTheme() {
+    const root = document.documentElement;
+    if (theme === 'dark') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    const bar = getComputedStyle(root).getPropertyValue('--bg').trim();
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta && bar) meta.setAttribute('content', bar);
+  }
+  for (const [v, label] of [['dark', 'Dark'], ['light', 'Light'], ['auto', 'Match my phone']]) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    $('theme').appendChild(o);
+  }
+  $('theme').value = theme;
+  $('theme').addEventListener('change', (e) => { theme = e.target.value; store(STORE.theme, theme); applyTheme(); });
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const again = () => { if (theme === 'auto') applyTheme(); };
+    if (mq.addEventListener) mq.addEventListener('change', again); else if (mq.addListener) mq.addListener(again);
+  }
+  applyTheme();
 
   // ---------- Service worker ----------
   if ('serviceWorker' in navigator) {
