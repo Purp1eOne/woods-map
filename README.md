@@ -7,6 +7,15 @@ A simple hunting map for Minnesota that installs on an Android phone like an app
 - Drop pins at your location, the map center, or by long-pressing the map
 - Pin types: stand, camp, truck, sign, water, other, plus notes
 - "Go there" shows distance and compass direction to any pin
+- Walking time: "Go there" shows distance, estimated time and direction. Pins > Measure works out distance and time between any two points (pins, your location, or the map center). Set your pace under More. These are straight-line estimates; real routes take longer
+- Sun chip at the top (tap it): sunrise and sunset for your location, plus Minnesota big-game shooting hours (30 min before sunrise to 30 min after sunset). Works with no signal. Other seasons differ, so check the current DNR regulations
+- Track button: records the path you walk, keeps the screen awake while recording, saves walks you can show/hide/delete and export as GPX. It only records while the screen is on and the app is open
+- Truck button: one tap starts "Go there" to your nearest Parking / truck pin
+- Range rings: pick 30, 50, 100, 150 or 200 yards in the pin editor to draw a ring around a stand
+- Trail camera and Harvest pin types with a date (cameras show "checked 12 days ago")
+- Pins list filter: show only one pin type, on the map and in the list
+- Tap the coordinates at the top left to type in coordinates and jump there (decimal or degrees and minutes), or to pin them
+- Pins list has an Edit button on every pin, so you can change or delete any pin even if it isn't on screen
 - Offline maps: save the areas you hunt (topo and satellite) for no-cell-service use
 - Export/import pins (JSON backup or GPX) to back up or share with friends
 - MN DNR public land overlays: Wildlife Management Areas (on by default) and walk-in access sites (SW Minnesota). Switch them on/off from the layers button at the top right

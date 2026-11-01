@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#2f3e2c">
   <meta name="mobile-web-app-capable" content="yes">
   <title>Woods Map</title>
@@ -17,11 +17,20 @@
   <div id="crosshair" aria-hidden="true"></div>
 
   <div id="topbar">
-    <button id="coords" title="Tap to copy coordinates">—</button>
+    <div id="toprow">
+      <button id="coords" title="Coordinates: tap to go to a spot or copy">—</button>
+      <button id="sunChip" title="Sunrise, sunset and shooting hours">☀ —</button>
+    </div>
     <div id="navinfo" hidden>
       <span id="navtext"></span>
       <button id="navStop" aria-label="Stop navigating">✕</button>
     </div>
+    <button id="filterChip" hidden></button>
+  </div>
+
+  <div id="fab">
+    <button id="fabTrack" class="fab" aria-label="Record my walk"><span class="fi">⏺</span><span id="fabTrackLbl">Track</span></button>
+    <button id="fabTruck" class="fab" aria-label="Back to truck"><span class="fi">🛻</span><span>Truck</span></button>
   </div>
 
   <nav id="bar">
@@ -43,6 +52,12 @@
     <label>Type
       <select id="pinCat"></select>
     </label>
+    <label id="pinDateWrap" hidden><span id="pinDateLabel">Last checked</span>
+      <input id="pinDate" type="date">
+    </label>
+    <label>Range ring
+      <select id="pinRing"></select>
+    </label>
     <label>Notes
       <textarea id="pinNotes" rows="3" maxlength="500" placeholder="Wind direction, access trail, sign seen..."></textarea>
     </label>
@@ -57,7 +72,79 @@
   <section id="pinsSheet" class="sheet" hidden>
     <h2>My pins</h2>
     <input id="pinSearch" type="search" placeholder="Search pins" autocomplete="off">
+    <label class="plain">Show on map and in this list
+      <select id="pinFilter"></select>
+    </label>
+    <div class="row tight"><button id="btnMeasure">Measure distance &amp; walking time</button></div>
     <ul id="pinList"></ul>
+  </section>
+
+  <section id="measureSheet" class="sheet" hidden>
+    <h2>Measure &amp; walking time</h2>
+    <label>From
+      <select id="mFrom"></select>
+    </label>
+    <label>To
+      <select id="mTo"></select>
+    </label>
+    <label>Walking pace
+      <select id="mPace"></select>
+    </label>
+    <div id="mResult" class="estimate"></div>
+    <p class="muted small">This is a straight line, not a trail route. Real walking through brush, water or hills usually takes longer.</p>
+    <div class="row">
+      <button id="btnMShow" class="primary">Show on map</button>
+      <button id="btnMClear">Clear line</button>
+      <button id="btnMClose">Close</button>
+    </div>
+  </section>
+
+  <section id="sunSheet" class="sheet" hidden>
+    <h2>Sunrise &amp; shooting hours</h2>
+    <label>Date
+      <input id="sunDate" type="date">
+    </label>
+    <div class="muted" id="sunWhere"></div>
+    <dl class="kv">
+      <dt>Big game shooting starts</dt><dd id="sunFirst">—</dd>
+      <dt>Sunrise</dt><dd id="sunRise">—</dd>
+      <dt>Sunset</dt><dd id="sunSet">—</dd>
+      <dt>Big game shooting ends</dt><dd id="sunLast">—</dd>
+      <dt>Daylight</dt><dd id="sunLen">—</dd>
+    </dl>
+    <p class="muted small">Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.</p>
+    <div class="row"><button id="btnSunClose">Close</button></div>
+  </section>
+
+  <section id="trackSheet" class="sheet" hidden>
+    <h2>Track my walk</h2>
+    <div id="trkStatus" class="estimate">Not recording</div>
+    <p class="muted small">Records the path you walk so you can see it and follow it back out. It only records while the screen is on and this app is open, and the screen is kept awake for you. That uses extra battery. If the app closes, the gap shows as a straight line.</p>
+    <div class="row">
+      <button id="btnTrkToggle" class="primary">Start recording</button>
+      <button id="btnTrkClose">Close</button>
+    </div>
+    <hr>
+    <h3>Saved walks</h3>
+    <ul id="trkList"></ul>
+    <div class="row"><button id="btnTrkGpx">Export walks as GPX</button></div>
+  </section>
+
+  <section id="gotoSheet" class="sheet" hidden>
+    <h2>Coordinates</h2>
+    <div class="muted">Center of the map</div>
+    <div id="gcCur" class="mono"></div>
+    <div class="row tight"><button id="btnGcCopy">Copy</button></div>
+    <hr>
+    <label>Go to coordinates
+      <input id="gcInput" type="text" autocomplete="off" autocapitalize="characters" placeholder="46.3045, -94.2001  or  N 46° 18.270 W 94° 12.006">
+    </label>
+    <div class="muted" id="gcMsg"></div>
+    <div class="row">
+      <button id="btnGcGo" class="primary">Go there</button>
+      <button id="btnGcPin">Pin it</button>
+      <button id="btnGcClose">Close</button>
+    </div>
   </section>
 
   <section id="offlineSheet" class="sheet" hidden>
@@ -93,7 +180,11 @@
   </section>
 
   <section id="moreSheet" class="sheet" hidden>
-    <h2>Backup &amp; share</h2>
+    <h2>Settings &amp; backup</h2>
+    <label>Walking pace (for time estimates)
+      <select id="pace"></select>
+    </label>
+    <hr>
     <p class="muted">Pins are stored on this phone. Export a backup, or send your pins to a friend and have them import the file.</p>
     <div class="row">
       <button id="btnExportJson">Export pins (backup)</button>
