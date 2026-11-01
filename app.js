@@ -170,7 +170,7 @@
   recall(STORE.overlays, ['wma']).forEach((k) => { if (overlayLayers[k]) overlayLayers[k].addTo(map); });
   const overlayControl = {};
   for (const [key, o] of Object.entries(OVERLAYS)) overlayControl[o.name] = overlayLayers[key];
-  L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
+  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
   const saveOverlays = () => store(STORE.overlays, Object.keys(overlayLayers).filter((k) => map.hasLayer(overlayLayers[k])));
   map.on('overlayadd', saveOverlays);
   map.on('overlayremove', saveOverlays);
@@ -178,6 +178,7 @@
   map.on('baselayerchange', (e) => {
     const key = Object.keys(layers).find((k) => layers[k] === e.layer);
     if (key) store(STORE.layer, key);
+    setTimeout(() => layerControl.collapse(), 150); // close the menu once a base map is picked
   });
 
   function updateCoords() {
@@ -1147,7 +1148,6 @@
     toast('Heading to ' + best.name + ': ' + fmtDist(bd) + ', about ' + fmtTime(walkMin(bd)), 5000);
   }
   $('fabTruck').addEventListener('click', goTruck);
-
   // ---------- Go to coordinates ----------
   const ddm = (v, pos, neg) => {
     const a = Math.abs(v), d = Math.floor(a);
