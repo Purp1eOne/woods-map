@@ -1,5 +1,5 @@
 /* Woods Map service worker: app shell works offline, USGS map tiles are cached. */
-const SHELL = 'woods-shell-v9';
+const SHELL = 'woods-shell-v10';
 const TILES = 'woods-tiles-v1';
 const SHELL_FILES = [
   './',
@@ -19,7 +19,7 @@ const SHELL_FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -54,9 +54,11 @@ self.addEventListener('fetch', (e) => {
   }
 
   // App files: network first so updates arrive, cache as the offline fallback.
+  // cache: 'no-cache' makes the browser check with the server every time instead of reusing
+  // its own copy for up to 10 minutes (GitHub Pages' default), so a push shows up on the next open.
   if (url.origin === self.location.origin) {
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
