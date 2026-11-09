@@ -2,7 +2,7 @@
 
 A simple hunting map for Minnesota and Illinois that installs on an Android phone like an app.
 
-- USGS topo (contour lines), USGS satellite, Hybrid (satellite with USGS trails, 4WD roads and back roads on top), and street map
+- USGS topo (contour lines), USGS satellite, Hybrid (satellite with the topo map's trails, roads and names on top), and street map
 - Live GPS dot
 - Drop pins at your location, the map center, or by long-pressing the map
 - Pin types: stand, camp, truck, sign, water, other, plus notes

@@ -32,6 +32,14 @@
       attr: 'USGS The National Map',
       maxNative: 16
     },
+    hybrid: {
+      // Satellite with the US Topo map's trails, roads, water, names and faint contours on top.
+      // Same trails as the Topo map (the separate USGS trails service is missing many of them).
+      name: 'Hybrid',
+      url: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
+      attr: 'USGS The National Map',
+      maxNative: 16
+    },
     street: {
       name: 'Street',
       url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -58,31 +66,15 @@
   };
   const OVERLAY_MAX_SAVE_ZOOM = 15; // keep load on the state server reasonable
   const OVERLAY_AVG_KB = 3;
-
-  // Hybrid map: satellite with USGS trails, 4WD roads, local roads and their names drawn on top
-  // (USGS National Map transportation service: 37 trails, 35 4WD roads, 32 local roads,
-  // 31 local connecting roads, 24 trail labels, 21 local road labels).
-  // Requested as 512px images (one per two zoom levels' worth of 256px tiles) so trail names
-  // are cut off at tile edges less often.
-  const TRAILS = {
-    url: 'https://carto.nationalmap.gov/arcgis/rest/services/transportation/MapServer',
-    layers: 'show:37,35,32,31,24,21',
-    size: 512,
-    minZoom: 12, // below this every road in the state is drawn and it turns to clutter
-    avgKb: 6
-  };
-  // Trail images for map zoom z are 512px images at url zoom z - 1.
-  const trailUrl = (z, x, y) => overlayTileUrl(TRAILS.url, z, x, y, TRAILS.layers, TRAILS.size);
-
   const MERC = 20037508.342789244;
-  // layers=show:0 is the DNR default: the WMA layer is switched off by default on the server.
-  function overlayTileUrl(base, z, x, y, layerList = 'show:0', size = 256) {
+  function overlayTileUrl(base, z, x, y) {
     const res = (MERC * 2) / Math.pow(2, z);
     const x0 = -MERC + x * res;
     const y1 = MERC - y * res;
     const f = (n) => n.toFixed(3);
+    // layers=show:0 is required: the WMA layer is switched off by default on the server.
     return base + '/export?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
-      '&bboxSR=3857&imageSR=3857&size=' + size + ',' + size + '&format=png32&transparent=true&layers=' + layerList + '&f=image';
+      '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&layers=show:0&f=image';
   }
 
   const CATS = {
@@ -181,28 +173,11 @@
   const layers = {};
   for (const [key, s] of Object.entries(SOURCES)) layers[key] = baseTiles(s);
 
-  const ArcExport = L.TileLayer.extend({
-    getTileUrl(c) {
-      return overlayTileUrl(this._url, this._getZoomForUrl(), c.x, c.y, this.options.layerList, this.options.tileSize);
-    }
-  });
-  // Hybrid gets its own satellite layer: one Leaflet layer can't sit in two base-map choices.
-  layers.hybrid = L.layerGroup([
-    baseTiles(SOURCES.sat),
-    new ArcExport(TRAILS.url, {
-      layerList: TRAILS.layers,
-      tileSize: TRAILS.size,
-      zoomOffset: -1,
-      minZoom: TRAILS.minZoom,
-      maxZoom: 18,
-      bounds: MN.pad(0.1),
-      crossOrigin: true,
-      zIndex: 6 // above the DNR shading so trails stay visible inside WMAs
-    })
-  ]);
-
   const startLayer = recall(STORE.layer, 'topo');
   (layers[startLayer] || layers.topo).addTo(map);
+  const ArcExport = L.TileLayer.extend({
+    getTileUrl(c) { return overlayTileUrl(this._url, this._getZoomForUrl(), c.x, c.y); }
+  });
   const overlayLayers = {};
   for (const [key, o] of Object.entries(OVERLAYS)) {
     overlayLayers[key] = new ArcExport(o.url, {
@@ -216,7 +191,7 @@
   recall(STORE.overlays, []).forEach((k) => { if (overlayLayers[k]) overlayLayers[k].addTo(map); });
   const overlayControl = {};
   for (const [key, o] of Object.entries(OVERLAYS)) overlayControl[o.name] = overlayLayers[key];
-  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Hybrid (satellite + trails)': layers.hybrid, 'Street': layers.street }, overlayControl, { position: 'topright', autoZIndex: false }).addTo(map); // keep our zIndex values so Hybrid trails stay above the DNR shading
+  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Hybrid (satellite + trails)': layers.hybrid, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
   const saveOverlays = () => store(STORE.overlays, Object.keys(overlayLayers).filter((k) => map.hasLayer(overlayLayers[k])));
   map.on('overlayadd', saveOverlays);
   map.on('overlayremove', saveOverlays);
@@ -691,18 +666,6 @@
     return countTiles(a, Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM)) * Object.keys(OVERLAYS).length;
   }
 
-  // Trail image URLs for the Hybrid map, map zooms TRAILS.minZoom..zMax (512px images at zoom - 1).
-  function trailUrls(a, zMax) {
-    const urls = [];
-    for (let z = TRAILS.minZoom; z <= zMax; z++) {
-      const r = tileRange(a, z - 1);
-      for (let x = r.x0; x <= r.x1; x++) {
-        for (let y = r.y0; y <= r.y1; y++) urls.push(trailUrl(z - 1, x, y));
-      }
-    }
-    return urls;
-  }
-
   function updateEstimate() {
     const a = areaBounds();
     const btn = $('btnOffDownload');
@@ -713,8 +676,7 @@
     }
     const zMax = +$('offZoom').value;
     const n = countTiles(a, zMax);
-    let extra = $('offOverlays').checked ? overlayTileCount(a, zMax) * OVERLAY_AVG_KB : 0;
-    if ($('offLayer').value === 'hybrid') extra += trailUrls(a, zMax).length * TRAILS.avgKb;
+    const extra = $('offOverlays').checked ? overlayTileCount(a, zMax) * OVERLAY_AVG_KB : 0;
     const mb = Math.round((n * AVG_KB + extra) / 1024);
     if (n > MAX_TILES) {
       $('offEstimate').textContent = 'Too big (about ' + mb + ' MB). Zoom the map in, or pick a lower detail level.';
@@ -733,13 +695,13 @@
       const topo = keys.filter((k) => k.url.includes('USGSTopo')).length;
       const sat = keys.filter((k) => k.url.includes('USGSImageryOnly')).length;
       const dnr = keys.filter((k) => k.url.includes('gis.dnr.state.mn.us')).length;
-      const trails = keys.filter((k) => k.url.includes('carto.nationalmap.gov')).length;
+      const hybrid = keys.filter((k) => k.url.includes('USGSImageryTopo')).length;
       let extra = '';
       if (navigator.storage && navigator.storage.estimate) {
         const est = await navigator.storage.estimate();
         extra = ' · phone storage used by app: ' + Math.round((est.usage || 0) / 1048576) + ' MB';
       }
-      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + trails.toLocaleString() + ' trail, ' + dnr.toLocaleString() + ' public-land tiles' + extra;
+      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + dnr.toLocaleString() + ' public-land tiles' + extra;
     } catch (e) {
       $('offStored').textContent = '';
     }
@@ -751,8 +713,7 @@
     if (!('caches' in window)) return toast('Offline maps need a secure (https) connection.');
     const a = areaBounds();
     if (!a) return;
-    const choice = $('offLayer').value;
-    const src = SOURCES[choice === 'hybrid' ? 'sat' : choice];
+    const src = SOURCES[$('offLayer').value];
     const zMax = +$('offZoom').value;
     if (countTiles(a, zMax) > MAX_TILES) return;
 
@@ -765,7 +726,6 @@
         }
       }
     }
-    if (choice === 'hybrid') urls.push(...trailUrls(a, zMax));
 
     if ($('offOverlays').checked) {
       // Probe first: if the DNR server won't allow its images to be saved, skip those layers cleanly.
