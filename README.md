@@ -16,7 +16,8 @@ A simple hunting map for Minnesota and Illinois that installs on an Android phon
 - Pin groups (like folders): put pins in groups such as "My pins" or "Mike's pins", and show or hide whole groups and any mix of pin types on the map and in the list. Single pins can be hidden too (they stay in the Pins list, greyed out). Imports go into their own group
 - Tap the coordinates at the top left to type in coordinates and jump there (decimal or degrees and minutes), or to pin them
 - Pins list has an Edit button on every pin, so you can change or delete any pin even if it isn't on screen
-- Offline maps: save the areas you hunt (topo, satellite, satellite + trails or hybrid) for no-cell-service use
+- Insights (bottom bar): Minnesota whitetail rut calendar (pre-rut, seeking, chasing, peak, post-rut) for any date, with what deer are doing and where to hunt. The Nov 10–16 peak is based on MN DNR breeding research; the other phases are estimates. Below it, your Minnesota deer permit area (found by GPS) with its archery, firearms and muzzleloader dates from the DNR's permit-area data, whether each is open, and which rut phases it covers
+- Offline maps (under More): save the areas you hunt (topo, satellite, satellite + trails or hybrid) for no-cell-service use
 - Export/import pins (JSON backup or GPX) to back up or share with friends
 - MN DNR public land overlays: Wildlife Management Areas and walk-in access sites (SW Minnesota), both off by default. Switch them on/off from the layers button at the top right
 - Covers Minnesota and Illinois. Illinois has the topo, satellite and street maps, but the DNR public-land overlays are Minnesota only
@@ -47,7 +48,7 @@ The app must be served over **https** for GPS and offline maps to work. Easiest 
 
 ## Before you head into the woods
 1. Open the app on wifi.
-2. Tap **Offline**, zoom the map to cover your hunting area, pick a map, then **Download this area**.
+2. Zoom the map to cover your hunting area, tap **More > Offline maps**, pick a map, then **Download this area**.
 3. Turn on airplane mode and confirm the map still shows.
 
 Each friend has to do their own downloads; saved maps and pins live on each phone.

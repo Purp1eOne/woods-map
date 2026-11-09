@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -295,7 +295,7 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'pinsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
+  const SHEETS = ['editor', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
   function showSheet(id) {
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });
     $('backdrop').hidden = false;
@@ -1118,13 +1118,218 @@
     const mins = Math.round((info.set - info.rise) / 60000);
     $('sunLen').textContent = Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
   }
-  $('sunChip').addEventListener('click', () => { $('sunDate').value = chiDate(); fillSun(); showSheet('sunSheet'); });
+  function openSun(ymd) { $('sunDate').value = ymd || chiDate(); fillSun(); showSheet('sunSheet'); }
+  $('sunChip').addEventListener('click', () => openSun());
   $('sunDate').addEventListener('change', fillSun);
+
+  // ---------- Whitetail rut calendar (Minnesota, statewide) ----------
+  // Peak anchored on Nov 12 / Nov 10-14 conception (MN DNR White-tailed Deer Handbook 2000;
+  // Fuller 1990 northern MN data). The other boundaries are estimates, not DNR dates.
+  // Month/day ranges, inclusive, the same every year.
+  const RUT = [
+    { name: 'Pre-rut', short: 'Pre', from: [9, 1], to: [10, 14],
+      what: 'Bucks are in hard antler, making their first rubs and scrapes and getting territorial. Few does are close to breeding yet.',
+      tip: 'Look for fresh rubs and early scrapes, and pattern bucks on their food sources.' },
+    { name: 'Seeking', short: 'Seek', from: [10, 15], to: [10, 31],
+      what: 'Mature bucks are ready to breed but few does are, so bucks travel and search. The DNR calls the last half of October a very active time for mature bucks.',
+      tip: 'Hunt scrape lines, travel corridors, and the routes does use between bedding and food.' },
+    { name: 'Chasing', short: 'Chase', from: [11, 1], to: [11, 9],
+      what: 'More does are coming into heat, and bucks start pushing and chasing them. Buck movement can pick up a lot.',
+      tip: 'Sit longer, including midday. Stay near doe bedding areas and the trails between them.' },
+    { name: 'Peak rut', short: 'Peak', from: [11, 10], to: [11, 16], peak: true,
+      what: 'Core breeding. About half of adult does are bred by the week of November 12. Bucks often stay with one doe for a day or more, so you may see fewer bucks even at the height of the rut.',
+      tip: 'Hunt where the does are. A buck tending a doe goes wherever she goes.' },
+    { name: 'Post-rut', short: 'Post', from: [11, 17], to: [12, 15],
+      what: 'Most adult does are bred. Worn-down bucks turn back to food to recover before winter.',
+      tip: 'Hunt food sources, especially on cold days.' }
+  ];
+  const SECOND_RUT = { from: [12, 8], to: [12, 12] };
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const md = (a) => MON[a[0] - 1] + ' ' + a[1];
+  const mdRange = (ph) => ph.from[0] === ph.to[0] ? md(ph.from) + '–' + ph.to[1] : md(ph.from) + ' – ' + md(ph.to);
+  const dayNum = (y, a) => Date.UTC(y, a[0] - 1, a[1]) / 86400000; // whole days since 1970, no time zone games
+  function fillRut() {
+    const ymd = $('rutDate').value || chiDate();
+    const [y, m, d] = ymd.split('-').map(Number);
+    const today = Date.UTC(y, m - 1, d) / 86400000;
+    const idx = RUT.findIndex((ph) => today >= dayNum(y, ph.from) && today <= dayNum(y, ph.to));
+    const ph = RUT[idx];
+    const days = (n) => n === 1 ? 'tomorrow' : 'in ' + n + ' days';
+    if (ph) {
+      const left = dayNum(y, ph.to) - today + 1, len = dayNum(y, ph.to) - dayNum(y, ph.from) + 1;
+      $('rutNow').textContent = ph.name + ' · ' + mdRange(ph) + ' · day ' + (len - left + 1) + ' of ' + len;
+      const nx = RUT[idx + 1];
+      $('rutNext').textContent = nx ? nx.name + ' starts ' + md(nx.from) + ', ' + days(dayNum(y, nx.from) - today) + '.' : 'The rut season wraps up after ' + md(ph.to) + '.';
+      $('rutWhat').textContent = ph.what;
+      $('rutTip').textContent = 'Where to hunt: ' + ph.tip;
+    } else {
+      const startY = today < dayNum(y, RUT[0].from) ? y : y + 1;
+      $('rutNow').textContent = 'Outside the rut season';
+      $('rutNext').textContent = 'Pre-rut starts ' + md(RUT[0].from) + ', ' + days(dayNum(startY, RUT[0].from) - today) + '. Peak breeding is usually ' + mdRange(RUT[3]) + ', centered on Nov 12.';
+      $('rutWhat').textContent = '';
+      $('rutTip').textContent = '';
+    }
+    const s2a = dayNum(y, SECOND_RUT.from), s2b = dayNum(y, SECOND_RUT.to);
+    const notes = [];
+    if (idx === 4) notes.push(today >= s2a && today <= s2b
+      ? 'Second rut: does that weren\'t bred come back into heat about 28 days after the peak, and some doe fawns breed in December. Expect a smaller burst of chasing around now.'
+      : 'A smaller second rut is possible around Dec 8–12, when does that weren\'t bred come back into heat (about 28 days after the peak).');
+    const info = sunInfo(ymd);
+    if (info && inIL(info.lat, info.lng) && !inMN(info.lat, info.lng)) notes.push('These dates come from Minnesota research, not Illinois data.');
+    $('rutNote').textContent = notes.join(' ');
+    // Timeline: one equal-width box per phase, the current one highlighted with a marker for the date.
+    const bar = $('rutBar');
+    bar.replaceChildren();
+    RUT.forEach((p2, i) => {
+      const li = document.createElement('li');
+      if (p2.peak) li.classList.add('peak');
+      if (i === idx) {
+        li.classList.add('now');
+        const mark = document.createElement('span');
+        mark.className = 'mark';
+        const len = dayNum(y, p2.to) - dayNum(y, p2.from) + 1;
+        mark.style.left = ((today - dayNum(y, p2.from) + 0.5) / len * 100) + '%';
+        li.appendChild(mark);
+      }
+      const n = document.createElement('b');
+      n.textContent = p2.short;
+      const dt = document.createElement('span');
+      dt.textContent = md(p2.from);
+      li.append(n, dt);
+      bar.appendChild(li);
+    });
+  }
   $('btnSunClose').addEventListener('click', closeSheets);
   let firstFix = false;
   map.on('moveend', updateSunChip);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') updateSunChip(); });
   updateSunChip();
+
+  // ---------- Insights sheet (rut calendar; hunting seasons later) ----------
+  $('btnInsights').addEventListener('click', () => { $('rutDate').value = chiDate(); fillRut(); showSheet('insightsSheet'); loadDpa(false); });
+  $('rutDate').addEventListener('change', () => { fillRut(); renderDpa(); });
+  $('btnDpaRefresh').addEventListener('click', () => loadDpa(true));
+
+  // ---------- Deer seasons for the permit area you're in (MN DNR permit-area data) ----------
+  // The DNR's deer permit area layer carries this year's season dates for every area, and it
+  // allows apps on other sites to read it, so no scraping is needed. Updated by the DNR each year.
+  const DPA_URL = 'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/bdry_deer_permit_areas/MapServer/0/query';
+  const DPA_FIELDS = 'dpa,zone_,designatio,archery,firearma,firearmb,muzzleload,effperiod';
+  const SEASONS = [['archery', 'Archery'], ['firearma', 'Firearms A'], ['firearmb', 'Firearms B'], ['muzzleload', 'Muzzleloader']];
+  let dpa = recall(STORE.dpa, null); // { attrs, at, lat, lng, where }
+  let dpaBusy = false;
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+  // "Sept. 19 to Dec. 31, 2026" (the year is sometimes left off) -> two [y, m, d] dates; null for "N/A".
+  function parseSeason(txt, yearHint) {
+    const m = String(txt || '').match(/([A-Za-z]+)\.?\s+(\d{1,2})\s*(?:to|-|–)\s*([A-Za-z]+)\.?\s+(\d{1,2})(?:,\s*(\d{4}))?/);
+    if (!m) return null;
+    const m1 = MONTHS[m[1].toLowerCase()], m2 = MONTHS[m[3].toLowerCase()];
+    if (!m1 || !m2) return null;
+    const y2 = m[5] ? +m[5] : yearHint;
+    const y1 = m1 > m2 ? y2 - 1 : y2;
+    return { from: [y1, m1, +m[2]], to: [y2, m2, +m[4]] };
+  }
+  const ymdNum = (a) => Date.UTC(a[0], a[1] - 1, a[2]) / 86400000;
+  function rutPhasesFor(r) {
+    const a = ymdNum(r.from), b = ymdNum(r.to);
+    const hit = RUT.filter((ph) => dayNum(r.from[0], ph.from) <= b && dayNum(r.from[0], ph.to) >= a);
+    if (hit.length === RUT.length) return 'the whole rut';
+    const names = hit.map((ph) => ph.name.toLowerCase());
+    if (dayNum(r.from[0], SECOND_RUT.from) <= b && dayNum(r.from[0], SECOND_RUT.to) >= a) names.push('the possible second rut');
+    return names.length ? names.join(', ') : 'outside the rut';
+  }
+  function renderDpa(status) {
+    const head = $('dpaHead'), info = $('dpaInfo'), list = $('dpaSeasons'), note = $('dpaNote');
+    list.replaceChildren();
+    if (!dpa) {
+      head.textContent = '';
+      info.textContent = status || 'Tap the button to look up your permit area.';
+      note.textContent = '';
+      return;
+    }
+    const a = dpa.attrs;
+    const yearHint = +((String(a.effperiod || '').match(/(\d{4})/) || [])[1]) || new Date().getFullYear();
+    head.textContent = 'Deer permit area ' + a.dpa + (a.zone_ ? ' · zone ' + a.zone_ : '');
+    info.textContent = [a.designatio && a.designatio.trim(), status].filter(Boolean).join(' · ');
+    const pick = $('rutDate').value || chiDate();
+    const [py, pm, pd] = pick.split('-').map(Number);
+    const today = Date.UTC(py, pm - 1, pd) / 86400000;
+    for (const [key, label] of SEASONS) {
+      const r = parseSeason(a[key], yearHint);
+      if (!r && (!a[key] || /^n\/?a$/i.test(String(a[key]).trim()))) continue; // no such season here
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      if (!r) { dd.textContent = String(a[key]); list.append(dt, dd); continue; }
+      const f = ymdNum(r.from), t = ymdNum(r.to);
+      let when;
+      if (today < f) when = 'opens in ' + (f - today) + ' day' + (f - today === 1 ? '' : 's');
+      else if (today <= t) when = 'open, ' + (t - today === 0 ? 'last day' : (t - today) + ' day' + (t - today === 1 ? '' : 's') + ' left');
+      else when = 'closed';
+      const main = document.createElement('span');
+      main.textContent = md([r.from[1], r.from[2]]) + ' – ' + md([r.to[1], r.to[2]]);
+      const sub = document.createElement('span');
+      sub.className = 'ssub' + (today >= f && today <= t ? ' open' : '');
+      sub.textContent = when + ' · ' + rutPhasesFor(r);
+      dd.append(main, sub);
+      list.append(dt, dd);
+    }
+    const saved = new Date(dpa.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    note.textContent = 'From the MN DNR permit-area data for ' + (a.effperiod || 'this season') + ', looked up ' + saved + ' at ' + dpa.where + '. Seasons can differ by zone and special hunt. Always confirm in the current DNR regulations before you hunt.';
+  }
+  function getFix(fresh) {
+    return new Promise((resolve) => {
+      if (me && Date.now() - me.t < (fresh ? 30000 : 120000)) return resolve({ lat: me.lat, lng: me.lng, where: 'your location' });
+      if (!('geolocation' in navigator)) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, where: 'your location' }),
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: fresh ? 0 : 300000 }
+      );
+    });
+  }
+  async function loadDpa(force) {
+    if (dpaBusy) return;
+    // Use the saved area if it was looked up today, unless asked to refresh.
+    if (!force && dpa && Date.now() - dpa.at < 6 * 3600000) return renderDpa();
+    dpaBusy = true;
+    renderDpa('Finding your location…');
+    try {
+      let pt = await getFix(force);
+      if (!pt) {
+        const c = map.getCenter();
+        pt = { lat: c.lat, lng: c.lng, where: 'the map center (no GPS)' };
+      }
+      if (!inMN(pt.lat, pt.lng)) {
+        renderDpa(dpa ? 'You are outside Minnesota, so this is your last Minnesota area.' : '');
+        if (!dpa) $('dpaInfo').textContent = 'Deer permit areas are Minnesota only.';
+        return;
+      }
+      renderDpa('Looking up your permit area…');
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 12000);
+      const q = '?geometry=' + pt.lng.toFixed(5) + ',' + pt.lat.toFixed(5) + '&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=' + DPA_FIELDS + '&returnGeometry=false&f=json';
+      const res = await fetch(DPA_URL + q, { signal: ctl.signal });
+      clearTimeout(timer);
+      const data = await res.json();
+      const f = data && data.features && data.features[0];
+      if (!f) {
+        renderDpa(dpa ? 'No permit area found at ' + pt.where + '. Showing your last one.' : '');
+        if (!dpa) $('dpaInfo').textContent = 'No deer permit area found at ' + pt.where + '.';
+        return;
+      }
+      dpa = { attrs: f.attributes, at: Date.now(), lat: pt.lat, lng: pt.lng, where: pt.where };
+      store(STORE.dpa, dpa);
+      renderDpa();
+    } catch (e) {
+      renderDpa(dpa ? 'No signal, so this is your saved area.' : '');
+      if (!dpa) $('dpaInfo').textContent = 'Could not look up your permit area. It needs a signal the first time.';
+    } finally {
+      dpaBusy = false;
+    }
+  }
+  $('btnInsSun').addEventListener('click', () => openSun($('rutDate').value));
+  $('btnInsClose').addEventListener('click', closeSheets);
 
   // ---------- Track recording ----------
   let tracks = recall(STORE.tracks, []);

@@ -39,7 +39,7 @@
     <button id="btnPinMe"><span class="ic">📍</span>Pin me</button>
     <button id="btnPinCenter"><span class="ic">✚</span>Pin center</button>
     <button id="btnPins"><span class="ic">☰</span>Pins</button>
-    <button id="btnOffline"><span class="ic">⬇</span>Offline</button>
+    <button id="btnInsights"><span class="ic">🦌</span>Insights</button>
     <button id="btnMore"><span class="ic">⋯</span>More</button>
   </nav>
 
@@ -145,6 +145,9 @@
 
       <h3>Sunrise and shooting hours</h3>
       <p>The chip at the top shows sunrise and sunset for where you are. Tap it for the big game / deer shooting window, which is 30 minutes before sunrise to 30 minutes after sunset in both Minnesota and Illinois. Other seasons have different hours, so check the current regulations.</p>
+      <h3>Insights: the rut and your deer seasons</h3>
+      <p>Tap <b>Insights</b> on the bottom bar for the <b>whitetail rut</b> phase on any date you pick: pre-rut, seeking, chasing, peak or post-rut. It also shows how long until the next phase, what deer are doing, and where to hunt. The peak, November 10 to 16, comes from Minnesota DNR breeding research. The other phases are estimates. Tap <b>Why these dates?</b> for the sources.</p>
+      <p>Below the rut, Insights uses your GPS to find the Minnesota <b>deer permit area</b> you're in and shows its archery, firearms and muzzleloader dates, straight from the DNR's permit-area data. Each season shows whether it's open on the date you picked, and which rut phases it covers. Looking up a new area needs a signal, but the last one is saved for when you're out of service. Always confirm with the current DNR regulations.</p>
 
       <h3>Coordinates</h3>
       <p>Tap the coordinates at the top left to copy them, or to type in a spot and jump there or pin it. It reads <b>46.3045, -94.2001</b> and also <b>N 46° 18.270 W 94° 12.006</b>.</p>
@@ -152,7 +155,7 @@
       <h3>Before you leave: save maps for offline</h3>
       <ol>
         <li>Do this on wifi. Pan and zoom so the screen covers the area you hunt.</li>
-        <li>Tap <b>Offline</b>, choose a map and a detail level, then <b>Download this area</b>.</li>
+        <li>Tap <b>More</b>, then <b>Offline maps</b>. Choose a map and a detail level, then <b>Download this area</b>.</li>
         <li>Repeat for the other map if you want both.</li>
         <li>Turn on airplane mode and check that the map still shows.</li>
       </ol>
@@ -187,6 +190,38 @@
     </dl>
     <p class="muted small" id="sunRules"></p>
     <div class="row"><button id="btnSunClose">Close</button></div>
+  </section>
+
+  <section id="insightsSheet" class="sheet" hidden>
+    <h2>Insights</h2>
+    <label>Date
+      <input id="rutDate" type="date">
+    </label>
+    <h3>Whitetail rut (Minnesota)</h3>
+    <div id="rutNow" class="estimate"></div>
+    <div id="rutNext" class="muted"></div>
+    <ol id="rutBar" class="rutbar" aria-label="Rut phases"></ol>
+    <p id="rutWhat" class="rutp"></p>
+    <p id="rutTip" class="rutp"></p>
+    <p id="rutNote" class="muted small"></p>
+    <p class="muted small">A planning guide, not a forecast. Day length sets when does breed. Weather, the moon and hunting pressure change how much deer move in daylight, not when the rut happens.</p>
+    <details class="why">
+      <summary>Why these dates?</summary>
+      <p class="muted small">The peak is the best-supported part. The Minnesota DNR's <i>White-tailed Deer Handbook</i> (2000) puts the midpoint of the rut in the week of November 12, when about half of does 1½ years and older have been bred. Northern Minnesota research from 1983–87 (Fuller 1990, cited in a 2005 DNR report) estimated peak conception at November 10–14. The DNR says deer breed from November into early December.</p>
+      <p class="muted small">The other phase boundaries are estimates that split the season into the phases hunters use. They are not official DNR dates. Minnesota hasn't published separate breeding dates for the north and south, so the same calendar is used statewide.</p>
+      <p class="muted small">The second rut note comes from the handbook too: a doe that isn't bred comes back into heat about 28 days later, and some doe fawns breed in December.</p>
+    </details>
+    <hr>
+    <h3>Deer seasons where you are</h3>
+    <div id="dpaHead" class="estimate"></div>
+    <div id="dpaInfo" class="muted"></div>
+    <dl id="dpaSeasons" class="kv seasons"></dl>
+    <p id="dpaNote" class="muted small"></p>
+    <div class="row tight"><button id="btnDpaRefresh">Update with my location</button></div>
+    <div class="row">
+      <button id="btnInsSun">☀ Sunrise &amp; shooting hours</button>
+      <button id="btnInsClose">Close</button>
+    </div>
   </section>
 
   <section id="trackSheet" class="sheet" hidden>
@@ -255,7 +290,10 @@
   </section>
 
   <section id="moreSheet" class="sheet" hidden>
-    <div class="row tight"><button id="btnHelp" class="primary">How to use this app</button></div>
+    <div class="row tight">
+      <button id="btnHelp" class="primary">How to use this app</button>
+      <button id="btnOffline">⬇ Offline maps</button>
+    </div>
     <h2>Settings &amp; backup</h2>
     <label>Theme
       <select id="theme"></select>
