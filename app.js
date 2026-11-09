@@ -173,6 +173,57 @@
   const layers = {};
   for (const [key, s] of Object.entries(SOURCES)) layers[key] = baseTiles(s);
 
+  // "Satellite + trails": the clean satellite photo with only the orange trail lines copied on
+  // from the Hybrid (Imagery Topo) image of the same square. Hybrid also tints public land white
+  // and adds names and contours; this keeps the photo untouched. Both images come from the same
+  // USGS server, so the service worker caches both and offline saves include both.
+  const TRAIL_PARTS = ['sat', 'hybrid'];
+  const tileUrl = (key, z, x, y) => SOURCES[key].url.replace('{z}', z).replace('{y}', y).replace('{x}', x);
+  const isTrailPixel = (r, g, b) => r > 170 && r - g > 45 && r - b > 70; // the US Topo trail orange
+  function loadImg(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+  const TrailBlend = L.GridLayer.extend({
+    createTile(c, done) {
+      const tile = document.createElement('canvas');
+      tile.width = tile.height = 256;
+      Promise.allSettled([loadImg(tileUrl('sat', c.z, c.x, c.y)), loadImg(tileUrl('hybrid', c.z, c.x, c.y))]).then(([sat, topo]) => {
+        if (sat.status !== 'fulfilled') return done(new Error('no satellite tile'), tile);
+        const ctx = tile.getContext('2d');
+        ctx.drawImage(sat.value, 0, 0);
+        if (topo.status === 'fulfilled') try {
+          // Keep only the trail pixels from the Hybrid image, on a transparent sheet.
+          const sheet = document.createElement('canvas');
+          sheet.width = sheet.height = 256;
+          const sctx = sheet.getContext('2d', { willReadFrequently: true });
+          sctx.drawImage(topo.value, 0, 0);
+          const px = sctx.getImageData(0, 0, 256, 256);
+          const d = px.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (!isTrailPixel(d[i], d[i + 1], d[i + 2])) d[i + 3] = 0;
+          }
+          sctx.putImageData(px, 0, 0);
+          // Draw it a few times, nudged by a pixel, to make the lines thicker and easier to see.
+          for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) ctx.drawImage(sheet, dx, dy);
+        } catch (e) { /* image couldn't be read: show plain satellite for this square */ }
+        done(null, tile);
+      });
+      return tile;
+    }
+  });
+  layers.trails = new TrailBlend({
+    attribution: SOURCES.sat.attr,
+    maxNativeZoom: SOURCES.sat.maxNative,
+    maxZoom: 18,
+    bounds: MN.pad(0.1)
+  });
+
   const startLayer = recall(STORE.layer, 'topo');
   (layers[startLayer] || layers.topo).addTo(map);
   const ArcExport = L.TileLayer.extend({
@@ -191,7 +242,7 @@
   recall(STORE.overlays, []).forEach((k) => { if (overlayLayers[k]) overlayLayers[k].addTo(map); });
   const overlayControl = {};
   for (const [key, o] of Object.entries(OVERLAYS)) overlayControl[o.name] = overlayLayers[key];
-  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Hybrid (satellite + trails)': layers.hybrid, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
+  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Satellite + trails': layers.trails, 'Hybrid (names, contours)': layers.hybrid, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
   const saveOverlays = () => store(STORE.overlays, Object.keys(overlayLayers).filter((k) => map.hasLayer(overlayLayers[k])));
   map.on('overlayadd', saveOverlays);
   map.on('overlayremove', saveOverlays);
@@ -675,7 +726,7 @@
       return;
     }
     const zMax = +$('offZoom').value;
-    const n = countTiles(a, zMax);
+    const n = countTiles(a, zMax) * ($('offLayer').value === 'trails' ? TRAIL_PARTS.length : 1);
     const extra = $('offOverlays').checked ? overlayTileCount(a, zMax) * OVERLAY_AVG_KB : 0;
     const mb = Math.round((n * AVG_KB + extra) / 1024);
     if (n > MAX_TILES) {
@@ -713,16 +764,17 @@
     if (!('caches' in window)) return toast('Offline maps need a secure (https) connection.');
     const a = areaBounds();
     if (!a) return;
-    const src = SOURCES[$('offLayer').value];
+    const choice = $('offLayer').value;
+    const keys = choice === 'trails' ? TRAIL_PARTS : [choice]; // Satellite + trails needs both images
     const zMax = +$('offZoom').value;
-    if (countTiles(a, zMax) > MAX_TILES) return;
+    if (countTiles(a, zMax) * keys.length > MAX_TILES) return;
 
     const urls = [];
     for (let z = 8; z <= zMax; z++) {
       const r = tileRange(a, z);
       for (let x = r.x0; x <= r.x1; x++) {
         for (let y = r.y0; y <= r.y1; y++) {
-          urls.push(src.url.replace('{z}', z).replace('{y}', y).replace('{x}', x));
+          for (const k of keys) urls.push(tileUrl(k, z, x, y));
         }
       }
     }
