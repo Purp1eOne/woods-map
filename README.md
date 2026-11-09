@@ -13,7 +13,7 @@ A simple hunting map for Minnesota and Illinois that installs on an Android phon
 - Truck button: one tap starts "Go there" to your nearest Parking / truck pin
 - Range rings: pick 30, 50, 100, 150 or 200 yards in the pin editor to draw a ring around a stand
 - Trail camera and Harvest pin types with a date (cameras show "checked 12 days ago")
-- Pin groups (like folders): put pins in groups such as "My pins" or "Mike's pins", and show or hide whole groups and any mix of pin types on the map and in the list. Imports go into their own group
+- Pin groups (like folders): put pins in groups such as "My pins" or "Mike's pins", and show or hide whole groups and any mix of pin types on the map and in the list. Single pins can be hidden too (they stay in the Pins list, greyed out). Imports go into their own group
 - Tap the coordinates at the top left to type in coordinates and jump there (decimal or degrees and minutes), or to pin them
 - Pins list has an Edit button on every pin, so you can change or delete any pin even if it isn't on screen
 - Offline maps: save the areas you hunt (topo, satellite, satellite + trails or hybrid) for no-cell-service use

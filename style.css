@@ -483,3 +483,4 @@ body:has(.leaflet-control-layers-expanded) #topbar { visibility: hidden; }
 .sheet .chips button[aria-pressed="true"] { opacity: 1; background: var(--accent); border-color: var(--accent-line); color: #fff; }
 #groupChecks label.check { margin-bottom: 10px; }
 #groupChecks .gcount { color: var(--muted); font-weight: 400; }
+#pinList li.off .rowmain { opacity: .55; }

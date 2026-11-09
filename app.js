@@ -374,7 +374,11 @@
     ed.className = 'alt';
     ed.textContent = 'Edit';
     ed.addEventListener('click', () => { map.closePopup(); openEditor(p, false); });
-    actions.append(go, ed);
+    const hide = document.createElement('button');
+    hide.className = 'alt';
+    hide.textContent = 'Hide';
+    hide.addEventListener('click', () => { map.closePopup(); setPinHidden(p, true); toast('"' + p.name + '" hidden. It stays in the Pins list, where a tap shows it again.', 4500); });
+    actions.append(go, ed, hide);
     div.appendChild(actions);
     return div;
   }
@@ -384,7 +388,16 @@
   // What's hidden on the map and in the list: pin types and groups. Remembered between visits.
   const hiddenTypes = new Set(recall(STORE.hiddenTypes, []));
   const hiddenGroups = new Set(recall(STORE.hiddenGroups, []));
-  const isShown = (p) => !hiddenTypes.has(CATS[p.cat] ? p.cat : 'other') && !hiddenGroups.has(groupOf(p));
+  // inFilter: its type and group are switched on. isShown: also not hidden one by one (p.hidden).
+  const inFilter = (p) => !hiddenTypes.has(CATS[p.cat] ? p.cat : 'other') && !hiddenGroups.has(groupOf(p));
+  const isShown = (p) => !p.hidden && inFilter(p);
+  function setPinHidden(p, hide) {
+    p.hidden = !!hide;
+    if (!hide) delete p.hidden;
+    store(STORE.pins, pins);
+    syncVisibility(p);
+    applyFilter();
+  }
   const YD = 0.9144;
 
   function drawRing(p) {
@@ -436,6 +449,7 @@
     $('pinNotes').value = p.notes || '';
     $('pinRing').value = String(p.ring || 0);
     $('pinGroup').value = isNew ? (p.group || '') : groupOf(p);
+    $('pinHide').checked = !!p.hidden;
     $('groupNames').replaceChildren(...groupNames().map((g) => { const o = document.createElement('option'); o.value = g; return o; }));
     $('pinDate').value = p.date || '';
     syncDateField(isNew);
@@ -453,6 +467,7 @@
     p.notes = $('pinNotes').value.trim();
     p.ring = +$('pinRing').value || 0;
     p.group = cleanGroup($('pinGroup').value);
+    if ($('pinHide').checked) p.hidden = true; else delete p.hidden;
     p.date = (p.cat === 'cam' || p.cat === 'harvest') ? $('pinDate').value : '';
     if (isNew) { p.id = newId(); p.created = Date.now(); pins.push(p); }
     store(STORE.pins, pins);
@@ -460,7 +475,10 @@
     if (target && target.id === p.id) { target = p; updateNav(); }
     closeSheets();
     editing = null;
-    toast(isShown(p) ? 'Pin saved' : 'Pin saved. Its type or group is hidden, so turn it on under Pins > Show on map to see it.', isShown(p) ? 2800 : 6000);
+    applyFilter();
+    if (isShown(p)) toast('Pin saved');
+    else if (p.hidden) toast('Pin saved and hidden. It stays in the Pins list, where a tap shows it again.', 5000);
+    else toast('Pin saved. Its type or group is hidden, so turn it on under Pins > Show on map to see it.', 6000);
   });
   $('btnPinCancel').addEventListener('click', () => { closeSheets(); editing = null; });
   $('btnPinDelete').addEventListener('click', () => {
@@ -512,7 +530,7 @@
   // ---------- Pin list ----------
   function renderList() {
     const q = $('pinSearch').value.trim().toLowerCase();
-    const shown = pins.filter(isShown);
+    const shown = pins.filter(inFilter); // pins hidden one by one stay in the list, greyed out
     const items = shown.filter((p) => !q || ((p.name || '') + ' ' + (p.notes || '') + ' ' + groupOf(p)).toLowerCase().includes(q));
     if (me) items.sort((a, b) => dist(me, a) - dist(me, b));
     else items.sort((a, b) => b.created - a.created);
@@ -541,13 +559,15 @@
       s.className = 'ps';
       const outside = !MN.contains([p.lat, p.lng]);
       const g = groupOf(p);
-      s.textContent = [c.label, g !== DEFAULT_GROUP ? g : '', ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
+      if (p.hidden) li.classList.add('off');
+      s.textContent = [p.hidden ? 'hidden' : '', c.label, g !== DEFAULT_GROUP ? g : '', ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
       txt.append(t, s);
       b.append(ic, txt);
       b.addEventListener('click', () => {
         if (outside) {
           return toast('That pin is outside the map area, so it cannot be shown on the map. Use Edit to change or delete it.', 5000);
         }
+        if (p.hidden) { setPinHidden(p, false); toast('"' + p.name + '" is showing again'); }
         closeSheets();
         map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16), { duration: 0.8 });
         const m = markers.get(p.id);
@@ -998,6 +1018,7 @@
           date: /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : '',
           cat: CATS[p.cat] ? p.cat : 'other',
           group: intoGroup || cleanGroup(p.group),
+          ...(!intoGroup && p.hidden ? { hidden: true } : {}), // keep hidden pins hidden when restoring a backup
           created: p.created || Date.now()
         };
         pins.push(np);
@@ -1362,11 +1383,13 @@
   }
   function hiddenSummary() {
     const t = hiddenTypes.size, g = [...hiddenGroups].filter((x) => groupNames().includes(x)).length;
-    if (!t && !g) return '';
+    const one = pins.filter((p) => p.hidden).length;
+    if (!t && !g && !one) return '';
     const shownTypes = Object.keys(CATS).filter((k) => !hiddenTypes.has(k));
     const parts = [];
     if (t) parts.push(shownTypes.length === 1 ? 'only ' + CATS[shownTypes[0]].label : t + ' type' + (t === 1 ? '' : 's') + ' hidden');
     if (g) parts.push(g + ' group' + (g === 1 ? '' : 's') + ' hidden');
+    if (one) parts.push(one + ' pin' + (one === 1 ? '' : 's') + ' hidden');
     return parts.join(', ');
   }
   function renderShowBox() {
@@ -1416,7 +1439,12 @@
     if (sum) chip.textContent = 'Pins: ' + sum + ' · show all ✕';
     if (!$('pinsSheet').hidden) { renderShowBox(); renderList(); }
   }
-  function showAllPins() { hiddenTypes.clear(); hiddenGroups.clear(); applyFilter(); }
+  function showAllPins() {
+    hiddenTypes.clear();
+    hiddenGroups.clear();
+    if (pins.some((p) => p.hidden)) { pins.forEach((p) => { delete p.hidden; }); store(STORE.pins, pins); }
+    applyFilter();
+  }
   $('btnShowAll').addEventListener('click', showAllPins);
   $('filterChip').addEventListener('click', showAllPins);
   applyFilter();
