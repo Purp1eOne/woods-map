@@ -2,7 +2,7 @@
 
 A simple hunting map for Minnesota and Illinois that installs on an Android phone like an app.
 
-- USGS topo (contour lines), USGS satellite, and street map
+- USGS topo (contour lines), USGS satellite, Hybrid (satellite with USGS trails, 4WD roads and back roads on top), and street map
 - Live GPS dot
 - Drop pins at your location, the map center, or by long-pressing the map
 - Pin types: stand, camp, truck, sign, water, other, plus notes
@@ -16,9 +16,9 @@ A simple hunting map for Minnesota and Illinois that installs on an Android phon
 - Pins list filter: show only one pin type, on the map and in the list
 - Tap the coordinates at the top left to type in coordinates and jump there (decimal or degrees and minutes), or to pin them
 - Pins list has an Edit button on every pin, so you can change or delete any pin even if it isn't on screen
-- Offline maps: save the areas you hunt (topo and satellite) for no-cell-service use
+- Offline maps: save the areas you hunt (topo, satellite or hybrid) for no-cell-service use
 - Export/import pins (JSON backup or GPX) to back up or share with friends
-- MN DNR public land overlays: Wildlife Management Areas (on by default) and walk-in access sites (SW Minnesota). Switch them on/off from the layers button at the top right
+- MN DNR public land overlays: Wildlife Management Areas and walk-in access sites (SW Minnesota), both off by default. Switch them on/off from the layers button at the top right
 - Covers Minnesota and Illinois. Illinois has the topo, satellite and street maps, but the DNR public-land overlays are Minnesota only
 
 ## How to use it
@@ -47,7 +47,7 @@ The app must be served over **https** for GPS and offline maps to work. Easiest 
 
 ## Before you head into the woods
 1. Open the app on wifi.
-2. Tap **Offline**, zoom the map to cover your hunting area, pick Topo (and/or Satellite), then **Download this area**.
+2. Tap **Offline**, zoom the map to cover your hunting area, pick Topo, Satellite or Hybrid, then **Download this area**.
 3. Turn on airplane mode and confirm the map still shows.
 
 Each friend has to do their own downloads; saved maps and pins live on each phone.

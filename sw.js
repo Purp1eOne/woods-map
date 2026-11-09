@@ -1,5 +1,5 @@
 /* Woods Map service worker: app shell works offline, USGS map tiles are cached. */
-const SHELL = 'woods-shell-v7';
+const SHELL = 'woods-shell-v8';
 const TILES = 'woods-tiles-v1';
 const SHELL_FILES = [
   './',
@@ -35,8 +35,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // USGS tiles: cache first, then network (and remember what you looked at).
-  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us') {
+  // USGS tiles (topo, satellite, hybrid trails) and DNR overlays: cache first, then network (and remember what you looked at).
+  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'carto.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us') {
     e.respondWith(
       caches.open(TILES).then(async (cache) => {
         const hit = await cache.match(req, { ignoreVary: true });
