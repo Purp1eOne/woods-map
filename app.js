@@ -180,6 +180,38 @@
   const TRAIL_PARTS = ['sat', 'hybrid'];
   const tileUrl = (key, z, x, y) => SOURCES[key].url.replace('{z}', z).replace('{y}', y).replace('{x}', x);
   const isTrailPixel = (r, g, b) => r > 170 && r - g > 45 && r - b > 70; // the US Topo trail orange
+  // Make everything transparent except trail lines. Trail names use the same orange, so orange
+  // pixels are grouped into connected shapes and small ones (letters) are dropped. A shape that
+  // touches the tile edge may be a trail cut off by the edge, so it only needs to be a little longer.
+  const TRAIL_MIN_PX = 40, TRAIL_MIN_EDGE_PX = 8;
+  function keepTrailLines(d) {
+    const W = 256, N = W * W;
+    const mask = new Uint8Array(N); // 1 = orange, 2 = already grouped
+    for (let i = 0; i < N; i++) if (isTrailPixel(d[i * 4], d[i * 4 + 1], d[i * 4 + 2])) mask[i] = 1;
+    const keep = new Uint8Array(N);
+    const comp = new Int32Array(N);
+    for (let start = 0; start < N; start++) {
+      if (mask[start] !== 1) continue;
+      let len = 0, top = 0, edge = false;
+      comp[len++] = start; mask[start] = 2;
+      while (top < len) { // flood fill, 8 neighbours; comp doubles as the queue
+        const j = comp[top++], x = j % W, y = (j - x) / W;
+        if (x === 0 || y === 0 || x === W - 1 || y === W - 1) edge = true;
+        for (let oy = -1; oy <= 1; oy++) {
+          const ny = y + oy;
+          if (ny < 0 || ny >= W) continue;
+          for (let ox = -1; ox <= 1; ox++) {
+            const nx = x + ox;
+            if (nx < 0 || nx >= W) continue;
+            const k = ny * W + nx;
+            if (mask[k] === 1) { mask[k] = 2; comp[len++] = k; }
+          }
+        }
+      }
+      if (len >= (edge ? TRAIL_MIN_EDGE_PX : TRAIL_MIN_PX)) for (let n = 0; n < len; n++) keep[comp[n]] = 1;
+    }
+    for (let i = 0; i < N; i++) if (!keep[i]) d[i * 4 + 3] = 0;
+  }
   function loadImg(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -204,10 +236,7 @@
           const sctx = sheet.getContext('2d', { willReadFrequently: true });
           sctx.drawImage(topo.value, 0, 0);
           const px = sctx.getImageData(0, 0, 256, 256);
-          const d = px.data;
-          for (let i = 0; i < d.length; i += 4) {
-            if (!isTrailPixel(d[i], d[i + 1], d[i + 2])) d[i + 3] = 0;
-          }
+          keepTrailLines(px.data);
           sctx.putImageData(px, 0, 0);
           // Draw it a few times, nudged by a pixel, to make the lines thicker and easier to see.
           for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) ctx.drawImage(sheet, dx, dy);
