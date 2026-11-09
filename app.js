@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -311,6 +311,17 @@
   // ---------- Pins ----------
   let pins = recall(STORE.pins, []);
   const markers = new Map();
+
+  // Groups (like folders in other map apps): every pin belongs to one, and each can be shown or hidden.
+  const DEFAULT_GROUP = 'My pins';
+  const cleanGroup = (g) => String(g || '').trim().replace(/\s+/g, ' ').slice(0, 40) || DEFAULT_GROUP;
+  const groupOf = (p) => cleanGroup(p.group);
+  if (pins.some((p) => !p.group)) { pins.forEach((p) => { p.group = groupOf(p); }); store(STORE.pins, pins); }
+  function groupNames() {
+    const names = new Set([DEFAULT_GROUP]);
+    pins.forEach((p) => names.add(groupOf(p)));
+    return [DEFAULT_GROUP, ...[...names].filter((g) => g !== DEFAULT_GROUP).sort((a, b) => a.localeCompare(b))];
+  }
   let editing = null;
 
   const catSel = $('pinCat');
@@ -370,7 +381,10 @@
 
   // Range rings and the "show only this pin type" filter
   const rings = new Map();
-  let filterCat = 'all';
+  // What's hidden on the map and in the list: pin types and groups. Remembered between visits.
+  const hiddenTypes = new Set(recall(STORE.hiddenTypes, []));
+  const hiddenGroups = new Set(recall(STORE.hiddenGroups, []));
+  const isShown = (p) => !hiddenTypes.has(CATS[p.cat] ? p.cat : 'other') && !hiddenGroups.has(groupOf(p));
   const YD = 0.9144;
 
   function drawRing(p) {
@@ -383,7 +397,7 @@
     }));
   }
   function syncVisibility(p) {
-    const show = filterCat === 'all' || p.cat === filterCat;
+    const show = isShown(p);
     [markers.get(p.id), rings.get(p.id)].forEach((l) => {
       if (!l) return;
       if (show && !map.hasLayer(l)) l.addTo(map);
@@ -421,6 +435,8 @@
     $('pinCat').value = CATS[p.cat] ? p.cat : 'stand';
     $('pinNotes').value = p.notes || '';
     $('pinRing').value = String(p.ring || 0);
+    $('pinGroup').value = isNew ? (p.group || '') : groupOf(p);
+    $('groupNames').replaceChildren(...groupNames().map((g) => { const o = document.createElement('option'); o.value = g; return o; }));
     $('pinDate').value = p.date || '';
     syncDateField(isNew);
     $('pinCoords').textContent = p.lat.toFixed(5) + ', ' + p.lng.toFixed(5);
@@ -436,6 +452,7 @@
     p.name = $('pinName').value.trim() || (CATS[p.cat].short + ' ' + (pins.length + (isNew ? 1 : 0)));
     p.notes = $('pinNotes').value.trim();
     p.ring = +$('pinRing').value || 0;
+    p.group = cleanGroup($('pinGroup').value);
     p.date = (p.cat === 'cam' || p.cat === 'harvest') ? $('pinDate').value : '';
     if (isNew) { p.id = newId(); p.created = Date.now(); pins.push(p); }
     store(STORE.pins, pins);
@@ -443,7 +460,7 @@
     if (target && target.id === p.id) { target = p; updateNav(); }
     closeSheets();
     editing = null;
-    toast('Pin saved');
+    toast(isShown(p) ? 'Pin saved' : 'Pin saved. Its type or group is hidden, so turn it on under Pins > Show on map to see it.', isShown(p) ? 2800 : 6000);
   });
   $('btnPinCancel').addEventListener('click', () => { closeSheets(); editing = null; });
   $('btnPinDelete').addEventListener('click', () => {
@@ -495,8 +512,8 @@
   // ---------- Pin list ----------
   function renderList() {
     const q = $('pinSearch').value.trim().toLowerCase();
-    const items = pins.filter((p) => (filterCat === 'all' || p.cat === filterCat) &&
-      (!q || ((p.name || '') + ' ' + (p.notes || '')).toLowerCase().includes(q)));
+    const shown = pins.filter(isShown);
+    const items = shown.filter((p) => !q || ((p.name || '') + ' ' + (p.notes || '') + ' ' + groupOf(p)).toLowerCase().includes(q));
     if (me) items.sort((a, b) => dist(me, a) - dist(me, b));
     else items.sort((a, b) => b.created - a.created);
     const ul = $('pinList');
@@ -504,7 +521,7 @@
     if (!items.length) {
       const li = document.createElement('li');
       li.className = 'muted';
-      li.textContent = pins.length ? 'No pins match.' : 'No pins yet. Use "Pin me" or "Pin center" to add one.';
+      li.textContent = pins.length ? (shown.length ? 'No pins match.' : 'All pins are hidden. Use Show on map above to turn some back on.') : 'No pins yet. Use "Pin me" or "Pin center" to add one.';
       ul.appendChild(li);
       return;
     }
@@ -523,7 +540,8 @@
       const s = document.createElement('span');
       s.className = 'ps';
       const outside = !MN.contains([p.lat, p.lng]);
-      s.textContent = [c.label, ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
+      const g = groupOf(p);
+      s.textContent = [c.label, g !== DEFAULT_GROUP ? g : '', ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
       txt.append(t, s);
       b.append(ic, txt);
       b.addEventListener('click', () => {
@@ -542,8 +560,15 @@
       li.append(b, ed);
       ul.appendChild(li);
     }
+    const nHidden = pins.length - shown.length;
+    if (nHidden) {
+      const li = document.createElement('li');
+      li.className = 'muted';
+      li.textContent = nHidden + ' more pin' + (nHidden === 1 ? ' is' : 's are') + ' hidden (Show on map, above).';
+      ul.appendChild(li);
+    }
   }
-  $('btnPins').addEventListener('click', () => { $('pinSearch').value = ''; renderList(); showSheet('pinsSheet'); });
+  $('btnPins').addEventListener('click', () => { $('pinSearch').value = ''; renderShowBox(); renderList(); showSheet('pinsSheet'); });
   $('pinSearch').addEventListener('input', renderList);
 
   // ---------- GPS ----------
@@ -949,6 +974,15 @@
         const data = JSON.parse(text);
         incoming = Array.isArray(data) ? data : (data.pins || []);
       }
+      incoming = incoming.filter((p) => p && isFinite(p.lat) && isFinite(p.lng));
+      if (!incoming.length) return toast('No pins found in that file.');
+      // Put imported pins in their own group so they can be hidden in one tap.
+      const fileGroups = new Set(incoming.map((p) => p.group).filter(Boolean));
+      const suggest = 'Imported ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const answer = prompt(incoming.length + ' pin' + (incoming.length === 1 ? '' : 's') + ' in this file. Put them in which group? (for example: Mike\'s pins)' +
+        (fileGroups.size ? '\nLeave it empty to keep the groups saved in the file, e.g. when restoring your own backup.' : ''), fileGroups.size ? '' : suggest);
+      if (answer === null) return toast('Import cancelled');
+      const intoGroup = answer.trim() ? cleanGroup(answer) : (fileGroups.size ? null : cleanGroup(suggest));
       let added = 0;
       for (const p of incoming) {
         if (!isFinite(p.lat) || !isFinite(p.lng)) continue;
@@ -963,6 +997,7 @@
           ring: [30, 50, 100, 150, 200].includes(+p.ring) ? +p.ring : 0,
           date: /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : '',
           cat: CATS[p.cat] ? p.cat : 'other',
+          group: intoGroup || cleanGroup(p.group),
           created: p.created || Date.now()
         };
         pins.push(np);
@@ -970,8 +1005,10 @@
         added++;
       }
       store(STORE.pins, pins);
+      if (intoGroup && added) hiddenGroups.delete(intoGroup); // show what was just imported
+      applyFilter();
       closeSheets();
-      toast(added ? 'Imported ' + added + ' pin' + (added === 1 ? '' : 's') : 'Nothing new to import');
+      toast(added ? 'Imported ' + added + ' pin' + (added === 1 ? '' : 's') + (intoGroup ? ' into "' + intoGroup + '"' : '') : 'Nothing new to import');
     } catch (err) {
       toast('That file could not be read.');
     }
@@ -1248,8 +1285,11 @@
   // ---------- Back to truck ----------
   let pendingTruck = false;
   function goTruck() {
-    const trucks = pins.filter((p) => p.cat === 'truck');
-    if (!trucks.length) return toast('Add a pin with the type "Parking / truck" first. Then this button leads you back to it.', 5500);
+    const trucks = pins.filter((p) => p.cat === 'truck' && isShown(p)); // hidden pins (e.g. a friend's group) are skipped
+    if (!trucks.length) {
+      if (pins.some((p) => p.cat === 'truck')) return toast('Your Parking / truck pins are hidden. Turn them on under Pins > Show on map.', 5500);
+      return toast('Add a pin with the type "Parking / truck" first. Then this button leads you back to it.', 5500);
+    }
     if (!me || (watchId === null && Date.now() - me.t > 120000)) {
       pendingTruck = true;
       startGPS();
@@ -1315,28 +1355,71 @@
   $('btnGcClose').addEventListener('click', closeSheets);
   $('gcInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('btnGcGo').click(); } });
 
-  // ---------- Pin type filter ----------
-  {
-    const sel = $('pinFilter');
-    const all = document.createElement('option');
-    all.value = 'all';
-    all.textContent = 'All pin types';
-    sel.appendChild(all);
+  // ---------- Show / hide pins by type and group ----------
+  function saveHidden() {
+    store(STORE.hiddenTypes, [...hiddenTypes]);
+    store(STORE.hiddenGroups, [...hiddenGroups]);
+  }
+  function hiddenSummary() {
+    const t = hiddenTypes.size, g = [...hiddenGroups].filter((x) => groupNames().includes(x)).length;
+    if (!t && !g) return '';
+    const shownTypes = Object.keys(CATS).filter((k) => !hiddenTypes.has(k));
+    const parts = [];
+    if (t) parts.push(shownTypes.length === 1 ? 'only ' + CATS[shownTypes[0]].label : t + ' type' + (t === 1 ? '' : 's') + ' hidden');
+    if (g) parts.push(g + ' group' + (g === 1 ? '' : 's') + ' hidden');
+    return parts.join(', ');
+  }
+  function renderShowBox() {
+    const chips = $('typeChips');
+    chips.replaceChildren();
     for (const [k, c] of Object.entries(CATS)) {
-      const o = document.createElement('option');
-      o.value = k;
-      o.textContent = c.icon + '  ' + c.label;
-      sel.appendChild(o);
+      const b = document.createElement('button');
+      b.textContent = c.icon + ' ' + c.short;
+      b.title = c.label;
+      b.setAttribute('aria-pressed', String(!hiddenTypes.has(k)));
+      b.addEventListener('click', () => {
+        if (hiddenTypes.has(k)) hiddenTypes.delete(k); else hiddenTypes.add(k);
+        applyFilter();
+      });
+      chips.appendChild(b);
     }
+    const box = $('groupChecks');
+    box.replaceChildren();
+    for (const g of groupNames()) {
+      const n = pins.filter((p) => groupOf(p) === g).length;
+      const lab = document.createElement('label');
+      lab.className = 'check';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !hiddenGroups.has(g);
+      cb.addEventListener('change', () => {
+        if (cb.checked) hiddenGroups.delete(g); else hiddenGroups.add(g);
+        applyFilter();
+      });
+      const name = document.createElement('span');
+      name.textContent = g + ' ';
+      const cnt = document.createElement('span');
+      cnt.className = 'gcount';
+      cnt.textContent = '(' + n + ')';
+      name.appendChild(cnt);
+      lab.append(cb, name);
+      box.appendChild(lab);
+    }
+    $('showSummary').textContent = hiddenSummary() || 'all pins';
   }
   function applyFilter() {
+    saveHidden();
     pins.forEach(syncVisibility);
+    const sum = hiddenSummary();
     const chip = $('filterChip');
-    chip.hidden = filterCat === 'all';
-    if (filterCat !== 'all') chip.textContent = 'Showing only: ' + CATS[filterCat].label + '  ✕';
+    chip.hidden = !sum;
+    if (sum) chip.textContent = 'Pins: ' + sum + ' · show all ✕';
+    if (!$('pinsSheet').hidden) { renderShowBox(); renderList(); }
   }
-  $('pinFilter').addEventListener('change', (e) => { filterCat = e.target.value; applyFilter(); renderList(); });
-  $('filterChip').addEventListener('click', () => { filterCat = 'all'; $('pinFilter').value = 'all'; applyFilter(); renderList(); });
+  function showAllPins() { hiddenTypes.clear(); hiddenGroups.clear(); applyFilter(); }
+  $('btnShowAll').addEventListener('click', showAllPins);
+  $('filterChip').addEventListener('click', showAllPins);
+  applyFilter();
 
   // ---------- Theme ----------
   let theme = recall(STORE.theme, 'dark');

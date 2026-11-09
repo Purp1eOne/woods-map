@@ -56,6 +56,10 @@
     <label id="pinDateWrap" hidden><span id="pinDateLabel">Last checked</span>
       <input id="pinDate" type="date">
     </label>
+    <label>Group
+      <input id="pinGroup" type="text" autocomplete="off" maxlength="40" list="groupNames" placeholder="My pins">
+      <datalist id="groupNames"></datalist>
+    </label>
     <label>Range ring
       <select id="pinRing"></select>
     </label>
@@ -73,9 +77,14 @@
   <section id="pinsSheet" class="sheet" hidden>
     <h2>My pins</h2>
     <input id="pinSearch" type="search" placeholder="Search pins" autocomplete="off">
-    <label class="plain">Show on map and in this list
-      <select id="pinFilter"></select>
-    </label>
+    <details id="showBox" class="showbox">
+      <summary>Show on map: <span id="showSummary">all pins</span></summary>
+      <div class="flabel">Pin types <span class="muted small">(tap to show or hide)</span></div>
+      <div id="typeChips" class="chips"></div>
+      <div class="flabel">Groups</div>
+      <div id="groupChecks"></div>
+      <div class="row tight"><button id="btnShowAll">Show all pins</button></div>
+    </details>
     <div class="row tight"><button id="btnMeasure">Measure distance &amp; walking time</button></div>
     <ul id="pinList"></ul>
   </section>
@@ -118,7 +127,9 @@
       <p>Give it a name, a type (stand, trail camera, harvest, sign, camp, truck, water or other) and notes. A <b>range ring</b> draws a 30 to 200 yard circle around the pin. Trail cameras and harvests also keep a date, and cameras show how long ago you checked them.</p>
 
       <h3>Using your pins</h3>
-      <p>Tap a pin on the map for <b>Go there</b> and <b>Edit</b>. The <b>Pins</b> button lists every pin, nearest first once GPS is on. You can search, show only one pin type, or tap <b>Edit</b> on any row to change or delete a pin.</p>
+      <p>Tap a pin on the map for <b>Go there</b> and <b>Edit</b>. The <b>Pins</b> button lists every pin, nearest first once GPS is on. You can search, or tap <b>Edit</b> on any row to change or delete a pin.</p>
+      <h3>Groups and hiding pins</h3>
+      <p>Every pin belongs to a <b>group</b>, like a folder. Your own pins start in <b>My pins</b>. Type a new name in the pin editor's Group box to start another group, such as "2025 season". In <b>Pins</b>, open <b>Show on map</b> to hide or show any mix of pin types, and to switch whole groups off or on. Hidden pins aren't deleted, and the Truck button skips them. A yellow chip at the top tells you when pins are hidden. Tap it to show everything again.</p>
 
       <h3>Finding your way</h3>
       <ul>
@@ -147,7 +158,7 @@
       <p>Your pins, tracks and GPS dot work with no signal. Saved maps live on your own phone, so each person downloads their own.</p>
 
       <h3>Backup and sharing</h3>
-      <p>Under <b>More</b>, <b>Export pins (backup)</b> saves a file of your pins. <b>Import pins</b> loads one. To share spots, send the file to a friend and have them import it. Export now and then, since pins live only on this phone.</p>
+      <p>Under <b>More</b>, <b>Export pins (backup)</b> saves a file of your pins. <b>Import pins</b> loads one and never changes or removes your own pins. It asks which group to put the new pins in, such as "Mike's pins", so you can hide them all in one tap. When restoring your own backup, leave the group empty to keep your groups as they were. To share spots, send the file to a friend and have them import it. Export now and then, since pins live only on this phone.</p>
 
       <h3>Good to know</h3>
       <ul>

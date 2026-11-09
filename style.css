@@ -471,3 +471,15 @@ body:has(.leaflet-control-layers-expanded) #topbar { visibility: hidden; }
 .help p, .help li { font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
 .help ul, .help ol { margin: 0 0 6px; padding-left: 20px; }
 .help b { font-weight: 700; }
+
+/* ---- Pins sheet: show/hide by type and group ---- */
+.showbox { border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; margin: 0 0 10px; }
+.showbox summary { cursor: pointer; padding: 11px 0; font-weight: 700; }
+.showbox[open] { padding-bottom: 4px; }
+.showbox #showSummary { font-weight: 400; color: var(--muted); }
+.flabel { font-size: 13px; font-weight: 600; color: var(--muted); margin: 6px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.sheet .chips button { padding: 8px 10px; font-size: 14px; font-weight: 600; border-radius: 999px; opacity: .5; }
+.sheet .chips button[aria-pressed="true"] { opacity: 1; background: var(--accent); border-color: var(--accent-line); color: #fff; }
+#groupChecks label.check { margin-bottom: 10px; }
+#groupChecks .gcount { color: var(--muted); font-weight: 400; }
