@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -321,7 +321,7 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
+  const SHEETS = ['editor', 'shapeEditor', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
   function showSheet(id) {
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });
     $('backdrop').hidden = false;
@@ -337,6 +337,9 @@
   // ---------- Pins ----------
   let pins = recall(STORE.pins, []);
   const markers = new Map();
+  // Lines and areas drawn on the map (like onX): { id, kind: 'line' | 'area', name, notes, color, group, pts: [[lat, lng], ...] }
+  let shapes = recall(STORE.shapes, []);
+  let draw = null; // set while drawing or moving the points of a line or area
 
   // Groups (like folders in other map apps): every pin belongs to one, and each can be shown or hidden.
   const DEFAULT_GROUP = 'My pins';
@@ -346,6 +349,7 @@
   function groupNames() {
     const names = new Set([DEFAULT_GROUP]);
     pins.forEach((p) => names.add(groupOf(p)));
+    shapes.forEach((sh) => names.add(groupOf(sh)));
     return [DEFAULT_GROUP, ...[...names].filter((g) => g !== DEFAULT_GROUP).sort((a, b) => a.localeCompare(b))];
   }
   let editing = null;
@@ -363,18 +367,20 @@
   // Color swatches in the editor. The first one ("Auto") uses the pin type's color.
   let pickedColor = '';
   function renderSwatches() {
-    const box = $('pinColors');
+    makeSwatches($('pinColors'), pickedColor, (CATS[$('pinCat').value] || CATS.other).color, (c) => { pickedColor = c; renderSwatches(); });
+  }
+  // A row of color buttons. With auto set, the first button means "use the default color" (value '').
+  function makeSwatches(box, current, auto, onPick) {
     box.replaceChildren();
-    const auto = (CATS[$('pinCat').value] || CATS.other).color;
-    for (const [c, name] of [['', 'Type color'], ...PIN_COLORS]) {
+    for (const [c, name] of [...(auto ? [['', 'Type color']] : []), ...PIN_COLORS]) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'swatch' + (c ? '' : ' auto');
       b.style.setProperty('--c', c || auto);
       b.title = name;
       b.setAttribute('aria-label', name);
-      b.setAttribute('aria-pressed', String(c === pickedColor));
-      b.addEventListener('click', () => { pickedColor = c; renderSwatches(); });
+      b.setAttribute('aria-pressed', String(c === current));
+      b.addEventListener('click', () => onPick(c));
       box.appendChild(b);
     }
   }
@@ -596,8 +602,335 @@
   });
 
   map.on('contextmenu', (e) => {
+    if (draw) return;
     openEditor({ lat: e.latlng.lat, lng: e.latlng.lng, cat: 'stand', name: '', notes: '' }, true);
   });
+
+  // ---------- Lines and areas ----------
+  // Lines show their length and walking time; areas show acres and the distance around.
+  const SHAPE_KINDS = {
+    line: { label: 'Line', icon: '〰️', color: '#f9a825', min: 2 },
+    area: { label: 'Area', icon: '🔲', color: '#ef6c00', min: 3 }
+  };
+  const shapeKey = (sh) => '_' + sh.kind; // its entry in hiddenTypes, next to the pin types
+  const shapeColor = (sh) => (PIN_COLORS.some(([c]) => c === sh.color) ? sh.color : SHAPE_KINDS[sh.kind].color);
+  const toLL = (pts) => pts.map(([lat, lng]) => ({ lat, lng }));
+  function lengthOf(pts, closed) {
+    const ll = toLL(pts);
+    if (closed && ll.length > 2) ll.push(ll[0]);
+    let m = 0;
+    for (let i = 1; i < ll.length; i++) m += dist(ll[i - 1], ll[i]);
+    return m;
+  }
+  // Area on the earth's surface in square meters (spherical polygon formula).
+  function areaOf(pts) {
+    if (pts.length < 3) return 0;
+    const R = 6378137;
+    let sum = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [la1, lo1] = pts[i], [la2, lo2] = pts[(i + 1) % pts.length];
+      sum += rad(lo2 - lo1) * (2 + Math.sin(rad(la1)) + Math.sin(rad(la2)));
+    }
+    return Math.abs(sum * R * R / 2);
+  }
+  function fmtArea(m2) {
+    const ac = m2 / 4046.856;
+    const txt = ac < 10 ? ac.toFixed(2) : ac < 100 ? ac.toFixed(1) : Math.round(ac).toLocaleString('en-US');
+    return txt + ' acre' + (txt === '1.00' ? '' : 's') + (ac >= 640 ? ' (' + (ac / 640).toFixed(2) + ' sq mi)' : '');
+  }
+  function shapeMeasure(sh) {
+    if (sh.kind === 'area') return fmtArea(areaOf(sh.pts)) + ' · ' + fmtDist(lengthOf(sh.pts, true)) + ' around';
+    const m = lengthOf(sh.pts);
+    return fmtDist(m) + ' · about ' + fmtTime(walkMin(m)) + ' walking';
+  }
+
+  const shapeLayers = new Map();
+  const shapeInFilter = (sh) => !hiddenTypes.has(shapeKey(sh)) && !hiddenGroups.has(groupOf(sh));
+  const shapeShown = (sh) => !sh.hidden && shapeInFilter(sh) && !(draw && draw.shape === sh);
+  function shapeLayer(sh) {
+    const c = shapeColor(sh);
+    const ll = sh.pts.map(([a, b]) => [a, b]);
+    const l = sh.kind === 'area'
+      ? L.polygon(ll, { color: c, weight: 3, fillColor: c, fillOpacity: 0.18 })
+      : L.polyline(ll, { color: c, weight: 5, opacity: 0.95 });
+    // While drawing, a tap on an existing line or area adds a point instead of opening it.
+    l.on('click', (e) => { if (!draw) L.popup().setLatLng(e.latlng).setContent(shapePopup(sh)).openOn(map); });
+    return l;
+  }
+  function refreshShape(sh) {
+    const old = shapeLayers.get(sh.id);
+    if (old) map.removeLayer(old);
+    shapeLayers.set(sh.id, shapeLayer(sh));
+    syncShape(sh);
+  }
+  function syncShape(sh) {
+    const l = shapeLayers.get(sh.id);
+    if (!l) return;
+    const show = shapeShown(sh);
+    if (show && !map.hasLayer(l)) l.addTo(map);
+    if (!show && map.hasLayer(l)) map.removeLayer(l);
+  }
+  function removeShape(id) {
+    const l = shapeLayers.get(id);
+    if (l) { map.removeLayer(l); shapeLayers.delete(id); }
+  }
+  shapes.forEach(refreshShape);
+  const saveShapes = () => store(STORE.shapes, shapes);
+  function setShapeHidden(sh, hide) {
+    if (hide) sh.hidden = true; else delete sh.hidden;
+    saveShapes();
+    syncShape(sh);
+    applyFilter();
+  }
+
+  function shapePopup(sh) {
+    const k = SHAPE_KINDS[sh.kind];
+    const div = document.createElement('div');
+    div.className = 'pp';
+    const h = document.createElement('strong');
+    h.textContent = sh.name || 'Untitled';
+    div.appendChild(h);
+    const meta = document.createElement('div');
+    meta.className = 'pp-meta';
+    meta.textContent = k.label + ' · ' + shapeMeasure(sh);
+    div.appendChild(meta);
+    if (sh.notes) {
+      const n = document.createElement('div');
+      n.className = 'pp-notes';
+      n.textContent = sh.notes;
+      div.appendChild(n);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'pp-actions';
+    const btn = (label, alt, fn) => {
+      const b = document.createElement('button');
+      if (alt) b.className = 'alt';
+      b.textContent = label;
+      b.addEventListener('click', () => { map.closePopup(); fn(); });
+      actions.appendChild(b);
+    };
+    btn('Edit', false, () => openShapeEditor(sh, false));
+    btn('Move points', true, () => startDraw(sh.kind, sh));
+    btn('Share', true, () => shareShape(sh));
+    btn('Hide', true, () => { setShapeHidden(sh, true); toast('"' + sh.name + '" hidden. It stays in the Pins list, where a tap shows it again.', 4500); });
+    div.appendChild(actions);
+    return div;
+  }
+  function zoomToShape(sh) {
+    const l = shapeLayers.get(sh.id);
+    if (!l) return;
+    map.flyToBounds(l.getBounds(), { padding: [40, 40], maxZoom: 17, duration: 0.8 });
+    setTimeout(() => L.popup().setLatLng(sh.kind === 'area' ? l.getBounds().getCenter() : l.getLatLngs()[Math.floor(l.getLatLngs().length / 2)]).setContent(shapePopup(sh)).openOn(map), 900);
+  }
+
+  // Drawing: tap the map (or use the crosshair) to add points, drag a point to move it.
+  const vtxIcon = (first) => L.divIcon({ className: '', html: '<div class="vtx' + (first ? ' first' : '') + '"></div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+  function startDraw(kind, existing) {
+    if (draw) stopDraw();
+    closeSheets();
+    map.closePopup();
+    draw = { kind, shape: existing || null, pts: existing ? existing.pts.map((p) => p.slice()) : [], vtx: [], preview: null };
+    if (existing) syncShape(existing); // hide the saved copy while its points are moved
+    document.body.classList.add('drawing');
+    $('drawbar').hidden = false;
+    redrawDraft();
+  }
+  function redrawDraft() {
+    if (!draw) return;
+    const k = SHAPE_KINDS[draw.kind];
+    const c = draw.shape ? shapeColor(draw.shape) : k.color;
+    if (draw.preview) map.removeLayer(draw.preview);
+    const ll = draw.pts.map(([a, b]) => [a, b]);
+    draw.preview = (draw.kind === 'area' && ll.length > 2
+      ? L.polygon(ll, { color: c, weight: 3, dashArray: '6 6', fillColor: c, fillOpacity: 0.15, interactive: false })
+      : L.polyline(ll, { color: c, weight: 4, dashArray: '6 6', interactive: false })).addTo(map);
+    draw.vtx.forEach((m) => map.removeLayer(m));
+    draw.vtx = draw.pts.map((p, i) => {
+      const m = L.marker(p, { icon: vtxIcon(i === 0 && draw.kind === 'area'), draggable: true, zIndexOffset: 1000, keyboard: false });
+      m.on('drag', (e) => {
+        const q = e.target.getLatLng();
+        draw.pts[i] = [q.lat, q.lng];
+        draw.preview.setLatLngs(draw.pts.map(([a, b]) => [a, b]));
+        drawStatus();
+      });
+      // Tapping the first point of an area closes it.
+      m.on('click', () => { if (i === 0 && draw.kind === 'area' && draw.pts.length >= 3) finishDraw(); });
+      return m.addTo(map);
+    });
+    drawStatus();
+  }
+  function drawStatus() {
+    const k = SHAPE_KINDS[draw.kind];
+    const n = draw.pts.length;
+    const what = (draw.shape ? 'Moving points: ' + draw.shape.name : 'New ' + k.label.toLowerCase());
+    let m = '';
+    if (draw.kind === 'line' && n >= 2) m = shapeMeasure({ kind: 'line', pts: draw.pts });
+    if (draw.kind === 'area' && n >= 3) m = shapeMeasure({ kind: 'area', pts: draw.pts });
+    $('drawText').textContent = what + (m ? ' · ' + m : '');
+    $('drawHint').textContent = n < k.min
+      ? 'Tap the map to add points' + (n ? ' (' + n + ' so far, ' + k.min + ' needed)' : '') + ', or line up the crosshair and tap ✚.'
+      : 'Drag a point to move it.' + (draw.kind === 'area' ? ' Tap the first point or Done to finish.' : ' Tap Done to finish.');
+    $('btnDrawUndo').disabled = !n;
+    $('btnDrawDone').disabled = n < k.min;
+  }
+  function addDrawPoint(lat, lng) {
+    if (!draw) return;
+    if (draw.pts.length >= 500) return toast('That\'s the most points one line or area can have.');
+    draw.pts.push([lat, lng]);
+    redrawDraft();
+  }
+  map.on('click', (e) => addDrawPoint(e.latlng.lat, e.latlng.lng));
+  function stopDraw() {
+    if (!draw) return;
+    if (draw.preview) map.removeLayer(draw.preview);
+    draw.vtx.forEach((m) => map.removeLayer(m));
+    const sh = draw.shape;
+    draw = null;
+    if (sh) syncShape(sh);
+    document.body.classList.remove('drawing');
+    $('drawbar').hidden = true;
+  }
+  function finishDraw() {
+    if (!draw || draw.pts.length < SHAPE_KINDS[draw.kind].min) return;
+    const pts = draw.pts.map(([a, b]) => [+a.toFixed(6), +b.toFixed(6)]);
+    const { kind, shape } = draw;
+    stopDraw();
+    if (shape) {
+      shape.pts = pts;
+      saveShapes();
+      refreshShape(shape);
+      toast(shape.name + ': ' + shapeMeasure(shape), 4000);
+    } else {
+      openShapeEditor({ kind, pts, name: '', notes: '' }, true);
+    }
+  }
+  $('btnDrawUndo').addEventListener('click', () => { if (draw && draw.pts.length) { draw.pts.pop(); redrawDraft(); } });
+  $('btnDrawCenter').addEventListener('click', () => { const c = map.getCenter(); addDrawPoint(c.lat, c.lng); });
+  $('btnDrawDone').addEventListener('click', finishDraw);
+  $('btnDrawCancel').addEventListener('click', () => {
+    if (draw && !draw.shape && draw.pts.length > 1 && !confirm('Throw away this ' + SHAPE_KINDS[draw.kind].label.toLowerCase() + '?')) return;
+    stopDraw();
+  });
+  $('btnDrawLine').addEventListener('click', () => startDraw('line'));
+  $('btnDrawArea').addEventListener('click', () => startDraw('area'));
+
+  // Line / area editor sheet
+  let shapeEditing = null, shapePicked = '';
+  function renderShapeSwatches() {
+    makeSwatches($('shapeColors'), shapePicked, '', (c) => { shapePicked = c; renderShapeSwatches(); });
+  }
+  function openShapeEditor(sh, isNew) {
+    shapeEditing = { sh, isNew };
+    const k = SHAPE_KINDS[sh.kind];
+    $('shapeTitle').textContent = (isNew ? 'New ' : 'Edit ') + k.label.toLowerCase();
+    $('shapeName').value = sh.name || '';
+    $('shapeName').placeholder = sh.kind === 'area' ? 'e.g. North bedding area' : 'e.g. Entry route to ridge stand';
+    $('shapeNotes').value = sh.notes || '';
+    $('shapeGroup').value = isNew ? '' : groupOf(sh);
+    $('groupNames').replaceChildren(...groupNames().map((g) => { const o = document.createElement('option'); o.value = g; return o; }));
+    $('shapeHide').checked = !!sh.hidden;
+    $('shapeMeasure').textContent = shapeMeasure(sh);
+    shapePicked = shapeColor(sh);
+    renderShapeSwatches();
+    $('btnShapeDelete').hidden = isNew;
+    $('btnShapePoints').hidden = isNew;
+    showSheet('shapeEditor');
+  }
+  $('btnShapeSave').addEventListener('click', () => {
+    if (!shapeEditing) return;
+    const { sh, isNew } = shapeEditing;
+    const k = SHAPE_KINDS[sh.kind];
+    sh.name = $('shapeName').value.trim() || (k.label + ' ' + (shapes.filter((x) => x.kind === sh.kind).length + (isNew ? 1 : 0)));
+    sh.notes = $('shapeNotes').value.trim();
+    sh.group = cleanGroup($('shapeGroup').value);
+    sh.color = shapePicked || k.color;
+    if ($('shapeHide').checked) sh.hidden = true; else delete sh.hidden;
+    if (isNew) { sh.id = newId(); sh.created = Date.now(); shapes.push(sh); }
+    saveShapes();
+    refreshShape(sh);
+    closeSheets();
+    shapeEditing = null;
+    applyFilter();
+    if (shapeShown(sh)) toast(sh.name + ' saved · ' + shapeMeasure(sh), 4000);
+    else toast('Saved. It\'s hidden right now; turn it on under Pins > Show on map.', 5000);
+  });
+  $('btnShapeCancel').addEventListener('click', () => { closeSheets(); shapeEditing = null; });
+  $('btnShapePoints').addEventListener('click', () => { const sh = shapeEditing && shapeEditing.sh; shapeEditing = null; if (sh) startDraw(sh.kind, sh); });
+  $('btnShapeDelete').addEventListener('click', () => {
+    if (!shapeEditing || shapeEditing.isNew) return;
+    const { sh } = shapeEditing;
+    if (!confirm('Delete "' + sh.name + '"?')) return;
+    shapes = shapes.filter((x) => x.id !== sh.id);
+    saveShapes();
+    removeShape(sh.id);
+    closeSheets();
+    shapeEditing = null;
+    applyFilter();
+  });
+
+  // KML for lines and areas: the format Google Earth, onX and most map apps read.
+  const xmlEsc = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+  function kmlColor(hex) { const h = hex.slice(1); return 'ff' + h.slice(4, 6) + h.slice(2, 4) + h.slice(0, 2); } // KML is aabbggrr
+  function shapeKML(sh) {
+    const c = kmlColor(shapeColor(sh));
+    const coords = (sh.kind === 'area' ? [...sh.pts, sh.pts[0]] : sh.pts).map(([la, lo]) => lo + ',' + la + ',0').join(' ');
+    const geom = sh.kind === 'area'
+      ? '<Polygon><outerBoundaryIs><LinearRing><coordinates>' + coords + '</coordinates></LinearRing></outerBoundaryIs></Polygon>'
+      : '<LineString><tessellate>1</tessellate><coordinates>' + coords + '</coordinates></LineString>';
+    return '  <Placemark>\n    <name>' + xmlEsc(sh.name) + '</name>\n    <description>' + xmlEsc([shapeMeasure(sh), sh.notes].filter(Boolean).join('\n')) + '</description>\n' +
+      '    <Style><LineStyle><color>' + c + '</color><width>3</width></LineStyle><PolyStyle><color>4d' + c.slice(2) + '</color></PolyStyle></Style>\n    ' + geom + '\n  </Placemark>';
+  }
+  const kmlDoc = (body) => '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Woods Map</name>\n' + body + '\n</Document></kml>\n';
+  async function shareShape(sh) {
+    const k = SHAPE_KINDS[sh.kind];
+    const fname = (sh.name || k.label).replace(/[^\w-]+/g, '_') + '.kml';
+    const kml = kmlDoc(shapeKML(sh));
+    const text = k.icon + ' ' + sh.name + ' (' + k.label + ')\n' + shapeMeasure(sh) + (sh.notes ? '\n' + sh.notes : '') +
+      '\nOpen the attached KML in Woods Map (More > Import pins), Google Earth, onX or another map app.';
+    const file = new File([kml], fname, { type: 'application/vnd.google-earth.kml+xml' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ title: sh.name, text, files: [file] }); return; }
+      catch (err) { if (err && err.name === 'AbortError') return; }
+    }
+    download(fname, kml, 'application/vnd.google-earth.kml+xml');
+    toast('Saved ' + fname + '. Send that file to share it.', 4500);
+  }
+
+  // Turns imported lines and areas (from GPX, KML or a backup) into saved shapes; long tracks are thinned out.
+  function cleanShape(x, intoGroup) {
+    if (!x || !SHAPE_KINDS[x.kind] || !Array.isArray(x.pts)) return null;
+    let pts = x.pts.filter((p) => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180).map(([a, b]) => [+a, +b]);
+    if (x.kind === 'area' && pts.length > 3) {
+      const [f, l] = [pts[0], pts[pts.length - 1]];
+      if (f[0] === l[0] && f[1] === l[1]) pts.pop(); // KML and GPX repeat the first point to close an area
+    }
+    if (pts.length > 500) { const step = pts.length / 500; pts = Array.from({ length: 500 }, (_, i) => pts[Math.floor(i * step)]); }
+    if (pts.length < SHAPE_KINDS[x.kind].min) return null;
+    return {
+      id: newId(),
+      kind: x.kind,
+      name: String(x.name || 'Imported ' + SHAPE_KINDS[x.kind].label.toLowerCase()).slice(0, 60),
+      notes: String(x.notes || '').slice(0, 500),
+      color: PIN_COLORS.some(([c]) => c === x.color) ? x.color : SHAPE_KINDS[x.kind].color,
+      group: intoGroup || cleanGroup(x.group),
+      ...(!intoGroup && x.hidden ? { hidden: true } : {}),
+      pts,
+      created: x.created || Date.now()
+    };
+  }
+  // Nearest of our colors to a KML aabbggrr color, so imports keep roughly the color they had.
+  function nearestColor(kml) {
+    const m = /^[0-9a-f]{8}$/i.exec(kml || '');
+    if (!m) return '';
+    const rgb = [kml.slice(6, 8), kml.slice(4, 6), kml.slice(2, 4)].map((h) => parseInt(h, 16));
+    let best = '', bd = Infinity;
+    for (const [c] of PIN_COLORS) {
+      const q = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+      const d = q.reduce((a, v, i) => a + (v - rgb[i]) ** 2, 0);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  }
 
   // ---------- Pin photos ----------
   // Photos are too big for localStorage, so they live in IndexedDB, one per pin, keyed by pin id.
@@ -774,7 +1107,6 @@
       li.className = 'muted';
       li.textContent = pins.length ? (shown.length ? 'No pins match.' : 'All pins are hidden. Use Show on map above to turn some back on.') : 'No pins yet. Use "Pin me" or "Pin center" to add one.';
       ul.appendChild(li);
-      return;
     }
     for (const p of items) {
       const c = CATS[p.cat] || CATS.other;
@@ -819,6 +1151,55 @@
       const li = document.createElement('li');
       li.className = 'muted';
       li.textContent = nHidden + ' more pin' + (nHidden === 1 ? ' is' : 's are') + ' hidden (Show on map, above).';
+      ul.appendChild(li);
+    }
+    renderShapeList(q);
+  }
+  // Lines and areas, under the pins. Nearest first once GPS is on (by their closest point).
+  function renderShapeList(q) {
+    const ul = $('shapeList');
+    ul.replaceChildren();
+    const shown = shapes.filter(shapeInFilter);
+    const items = shown.filter((sh) => !q || ((sh.name || '') + ' ' + (sh.notes || '') + ' ' + groupOf(sh) + ' ' + SHAPE_KINDS[sh.kind].label).toLowerCase().includes(q));
+    const near = (sh) => Math.min(...toLL(sh.pts).map((p) => dist(me, p)));
+    if (me) items.sort((a, b) => near(a) - near(b)); else items.sort((a, b) => b.created - a.created);
+    $('shapeHead').hidden = !shapes.length;
+    for (const sh of items) {
+      const k = SHAPE_KINDS[sh.kind];
+      const li = document.createElement('li');
+      if (sh.hidden) li.classList.add('off');
+      const b = document.createElement('button');
+      b.className = 'rowmain';
+      const ic = document.createElement('span');
+      ic.className = 'pi';
+      ic.style.setProperty('--c', shapeColor(sh));
+      ic.textContent = k.icon;
+      const txt = document.createElement('span');
+      const t = document.createElement('span');
+      t.className = 'pt';
+      t.textContent = sh.name;
+      const sub = document.createElement('span');
+      sub.className = 'ps';
+      const g = groupOf(sh);
+      sub.textContent = [sh.hidden ? 'hidden' : '', k.label, shapeMeasure(sh), g !== DEFAULT_GROUP ? g : '', me ? fmtDist(near(sh)) + ' away' : ''].filter(Boolean).join(' · ');
+      txt.append(t, sub);
+      b.append(ic, txt);
+      b.addEventListener('click', () => {
+        if (sh.hidden) { setShapeHidden(sh, false); toast('"' + sh.name + '" is showing again'); }
+        closeSheets();
+        zoomToShape(sh);
+      });
+      const ed = document.createElement('button');
+      ed.className = 'rowedit';
+      ed.textContent = 'Edit';
+      ed.addEventListener('click', () => openShapeEditor(sh, false));
+      li.append(b, ed);
+      ul.appendChild(li);
+    }
+    if (shapes.length && !items.length) {
+      const li = document.createElement('li');
+      li.className = 'muted';
+      li.textContent = shown.length ? 'No lines or areas match.' : 'All lines and areas are hidden (Show on map, above).';
       ul.appendChild(li);
     }
   }
@@ -1191,14 +1572,14 @@
 
   const blobToDataURL = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
   $('btnExportJson').addEventListener('click', async () => {
-    if (!pins.length) return toast('No pins to export yet');
+    if (!pins.length && !shapes.length) return toast('No pins to export yet');
     // Photos go in the backup too (as text), so a restore or a friend gets them.
     const out = [];
     for (const p of pins) {
       const b = p.photo ? await getPhoto(p.id) : null;
       out.push(b ? { ...p, photoData: await blobToDataURL(b) } : p);
     }
-    download('woods-map-pins-' + stamp() + '.json', JSON.stringify({ app: 'woods-map', pins: out }, null, 2), 'application/json');
+    download('woods-map-pins-' + stamp() + '.json', JSON.stringify({ app: 'woods-map', pins: out, shapes }, null, 2), 'application/json');
   });
 
   function toGPX() {
@@ -1210,10 +1591,16 @@
       '    <type>' + esc(p.cat) + '</type>\n' +
       '  </wpt>'
     ).join('\n');
-    return '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Woods Map" xmlns="http://www.topografix.com/GPX/1/1">\n' + w + '\n</gpx>\n';
+    // Lines and areas go in as tracks; an area is closed (ends where it starts) and has type "area".
+    const t = shapes.map((sh) =>
+      '  <trk>\n    <name>' + esc(sh.name) + '</name>\n    <desc>' + esc(sh.notes || '') + '</desc>\n    <type>' + sh.kind + '</type>\n    <trkseg>\n' +
+      (sh.kind === 'area' ? [...sh.pts, sh.pts[0]] : sh.pts).map(([la, lo]) => '      <trkpt lat="' + la + '" lon="' + lo + '"/>').join('\n') +
+      '\n    </trkseg>\n  </trk>'
+    ).join('\n');
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Woods Map" xmlns="http://www.topografix.com/GPX/1/1">\n' + [w, t].filter(Boolean).join('\n') + '\n</gpx>\n';
   }
   $('btnExportGpx').addEventListener('click', () => {
-    if (!pins.length) return toast('No pins to export yet');
+    if (!pins.length && !shapes.length) return toast('No pins to export yet');
     download('woods-map-pins-' + stamp() + '.gpx', toGPX(), 'application/gpx+xml');
   });
 
@@ -1224,7 +1611,7 @@
     if (!file) return;
     try {
       const text = (await file.text()).trim();
-      let incoming = [];
+      let incoming = [], inShapes = [];
       if (text.startsWith('<')) {
         const doc = new DOMParser().parseFromString(text, 'text/xml');
         const txtIn = (node, tag) => { const el = node.getElementsByTagName(tag)[0]; return el ? el.textContent.trim() : ''; };
@@ -1240,16 +1627,40 @@
           const desc = txtIn(pm, 'description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
           incoming.push({ lat, lng, name: txtIn(pm, 'name'), notes: desc });
         }
+        // Lines and areas. KML: LineString and Polygon (outer edge). GPX: tracks and routes.
+        const kmlPts = (el) => txtIn(el, 'coordinates').split(/\s+/).filter(Boolean).map((c) => { const [lo, la] = c.split(',').map(parseFloat); return [la, lo]; });
+        for (const pm of Array.from(doc.getElementsByTagName('Placemark'))) {
+          const base = {
+            name: txtIn(pm, 'name'),
+            notes: txtIn(pm, 'description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim(),
+            color: nearestColor(txtIn(pm.getElementsByTagName('LineStyle')[0] || pm, 'color'))
+          };
+          for (const ls of Array.from(pm.getElementsByTagName('LineString'))) inShapes.push({ ...base, kind: 'line', pts: kmlPts(ls) });
+          for (const pg of Array.from(pm.getElementsByTagName('Polygon'))) {
+            const outer = pg.getElementsByTagName('outerBoundaryIs')[0] || pg;
+            inShapes.push({ ...base, kind: 'area', pts: kmlPts(outer.getElementsByTagName('LinearRing')[0] || outer) });
+          }
+        }
+        const gpxPts = (el, tag) => Array.from(el.getElementsByTagName(tag)).map((p) => [parseFloat(p.getAttribute('lat')), parseFloat(p.getAttribute('lon'))]);
+        for (const tr of Array.from(doc.getElementsByTagName('trk'))) {
+          inShapes.push({ kind: txtIn(tr, 'type') === 'area' ? 'area' : 'line', name: txtIn(tr, 'name'), notes: txtIn(tr, 'desc'), pts: gpxPts(tr, 'trkpt') });
+        }
+        for (const rt of Array.from(doc.getElementsByTagName('rte'))) inShapes.push({ kind: 'line', name: txtIn(rt, 'name'), notes: txtIn(rt, 'desc'), pts: gpxPts(rt, 'rtept') });
       } else {
         const data = JSON.parse(text);
         incoming = Array.isArray(data) ? data : (data.pins || []);
+        inShapes = Array.isArray(data.shapes) ? data.shapes : [];
       }
       incoming = incoming.filter((p) => p && isFinite(p.lat) && isFinite(p.lng));
-      if (!incoming.length) return toast('No pins found in that file.');
+      inShapes = inShapes.filter((x) => cleanShape(x, 'x'));
+      if (!incoming.length && !inShapes.length) return toast('No pins, lines or areas found in that file.');
       // Put imported pins in their own group so they can be hidden in one tap.
-      const fileGroups = new Set(incoming.map((p) => p.group).filter(Boolean));
+      const fileGroups = new Set([...incoming, ...inShapes].map((p) => p.group).filter(Boolean));
       const suggest = 'Imported ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      const answer = prompt(incoming.length + ' pin' + (incoming.length === 1 ? '' : 's') + ' in this file. Put them in which group? (for example: Mike\'s pins)' +
+      const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+      const nL = inShapes.filter((x) => x.kind === 'line').length, nA = inShapes.length - nL;
+      const what = [incoming.length ? plural(incoming.length, 'pin') : '', nL ? plural(nL, 'line') : '', nA ? plural(nA, 'area') : ''].filter(Boolean).join(', ');
+      const answer = prompt(what + ' in this file. Put them in which group? (for example: Mike\'s pins)' +
         (fileGroups.size ? '\nLeave it empty to keep the groups saved in the file, e.g. when restoring your own backup.' : ''), fileGroups.size ? '' : suggest);
       if (answer === null) return toast('Import cancelled');
       const intoGroup = answer.trim() ? cleanGroup(answer) : (fileGroups.size ? null : cleanGroup(suggest));
@@ -1280,10 +1691,22 @@
         added++;
       }
       store(STORE.pins, pins);
-      if (intoGroup && added) hiddenGroups.delete(intoGroup); // show what was just imported
+      let addedShapes = 0;
+      for (const x of inShapes) {
+        const sh = cleanShape(x, intoGroup);
+        const dup = shapes.some((y) => y.kind === sh.kind && y.name === sh.name && y.pts.length === sh.pts.length &&
+          Math.abs(y.pts[0][0] - sh.pts[0][0]) < 1e-6 && Math.abs(y.pts[0][1] - sh.pts[0][1]) < 1e-6);
+        if (dup) continue;
+        shapes.push(sh);
+        refreshShape(sh);
+        addedShapes++;
+      }
+      if (addedShapes) saveShapes();
+      if (intoGroup && (added || addedShapes)) hiddenGroups.delete(intoGroup); // show what was just imported
       applyFilter();
       closeSheets();
-      toast(added ? 'Imported ' + added + ' pin' + (added === 1 ? '' : 's') + (intoGroup ? ' into "' + intoGroup + '"' : '') : 'Nothing new to import');
+      const got = [added ? plural(added, 'pin') : '', addedShapes ? addedShapes + (addedShapes === 1 ? ' line or area' : ' lines and areas') : ''].filter(Boolean).join(' and ');
+      toast(got ? 'Imported ' + got + (intoGroup ? ' into "' + intoGroup + '"' : '') : 'Nothing new to import');
     } catch (err) {
       toast('That file could not be read.');
     }
@@ -1842,13 +2265,14 @@
   }
   function hiddenSummary() {
     const t = hiddenTypes.size, g = [...hiddenGroups].filter((x) => groupNames().includes(x)).length;
-    const one = pins.filter((p) => p.hidden).length;
+    const one = pins.filter((p) => p.hidden).length + shapes.filter((sh) => sh.hidden).length;
     if (!t && !g && !one) return '';
     const shownTypes = Object.keys(CATS).filter((k) => !hiddenTypes.has(k));
+    if (shapes.length && Object.keys(SHAPE_KINDS).some((k) => !hiddenTypes.has('_' + k))) shownTypes.push('');
     const parts = [];
-    if (t) parts.push(shownTypes.length === 1 ? 'only ' + CATS[shownTypes[0]].label : t + ' type' + (t === 1 ? '' : 's') + ' hidden');
+    if (t) parts.push(shownTypes.length === 1 && shownTypes[0] ? 'only ' + CATS[shownTypes[0]].label : t + ' type' + (t === 1 ? '' : 's') + ' hidden');
     if (g) parts.push(g + ' group' + (g === 1 ? '' : 's') + ' hidden');
-    if (one) parts.push(one + ' pin' + (one === 1 ? '' : 's') + ' hidden');
+    if (one) parts.push(one + ' item' + (one === 1 ? '' : 's') + ' hidden');
     return parts.join(', ');
   }
   function renderShowBox() {
@@ -1856,6 +2280,9 @@
     chips.replaceChildren();
     // Only the types you've used (or hidden), so the list stays short.
     const used = Object.entries(CATS).filter(([k]) => hiddenTypes.has(k) || pins.some((p) => (CATS[p.cat] ? p.cat : 'other') === k));
+    for (const [kind, sk] of Object.entries(SHAPE_KINDS)) {
+      if (hiddenTypes.has('_' + kind) || shapes.some((sh) => sh.kind === kind)) used.push(['_' + kind, { icon: sk.icon, short: sk.label + 's', label: sk.label + 's' }]);
+    }
     if (!used.length) chips.textContent = 'No pins yet.';
     for (const [k, c] of used) {
       const b = document.createElement('button');
@@ -1871,7 +2298,7 @@
     const box = $('groupChecks');
     box.replaceChildren();
     for (const g of groupNames()) {
-      const n = pins.filter((p) => groupOf(p) === g).length;
+      const n = pins.filter((p) => groupOf(p) === g).length + shapes.filter((sh) => groupOf(sh) === g).length;
       const lab = document.createElement('label');
       lab.className = 'check';
       const cb = document.createElement('input');
@@ -1895,6 +2322,7 @@
   function applyFilter() {
     saveHidden();
     pins.forEach(syncVisibility);
+    shapes.forEach(syncShape);
     const sum = hiddenSummary();
     const chip = $('filterChip');
     chip.hidden = !sum;
@@ -1905,6 +2333,7 @@
     hiddenTypes.clear();
     hiddenGroups.clear();
     if (pins.some((p) => p.hidden)) { pins.forEach((p) => { delete p.hidden; }); store(STORE.pins, pins); }
+    if (shapes.some((sh) => sh.hidden)) { shapes.forEach((sh) => { delete sh.hidden; }); saveShapes(); }
     applyFilter();
   }
   $('btnShowAll').addEventListener('click', showAllPins);

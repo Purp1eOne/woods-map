@@ -27,6 +27,16 @@
       <button id="navStop" aria-label="Stop navigating">✕</button>
     </div>
     <button id="filterChip" hidden></button>
+    <div id="drawbar" hidden>
+      <div id="drawText"></div>
+      <div id="drawHint"></div>
+      <div class="drawbtns">
+        <button id="btnDrawUndo">↶ Undo</button>
+        <button id="btnDrawCenter" title="Add a point at the crosshair">✚ Crosshair</button>
+        <button id="btnDrawDone" class="primary">Done</button>
+        <button id="btnDrawCancel" aria-label="Cancel drawing">✕</button>
+      </div>
+    </div>
   </div>
 
   <div id="fab">
@@ -84,8 +94,31 @@
     </div>
   </section>
 
+  <section id="shapeEditor" class="sheet" hidden>
+    <h2 id="shapeTitle">New line</h2>
+    <div id="shapeMeasure" class="estimate"></div>
+    <label>Name
+      <input id="shapeName" type="text" autocomplete="off" maxlength="60">
+    </label>
+    <div class="flabel">Color</div>
+    <div id="shapeColors" class="swatches" role="group" aria-label="Color"></div>
+    <label>Group
+      <input id="shapeGroup" type="text" autocomplete="off" maxlength="40" list="groupNames" placeholder="My pins">
+    </label>
+    <label>Notes
+      <textarea id="shapeNotes" rows="3" maxlength="500" placeholder="Wind, best time to use it, who has permission..."></textarea>
+    </label>
+    <label class="check"><input id="shapeHide" type="checkbox"> Hide this on the map</label>
+    <div class="row">
+      <button id="btnShapeSave" class="primary">Save</button>
+      <button id="btnShapePoints">Move points</button>
+      <button id="btnShapeCancel">Cancel</button>
+      <button id="btnShapeDelete" class="danger">Delete</button>
+    </div>
+  </section>
+
   <section id="pinsSheet" class="sheet" hidden>
-    <h2>My pins</h2>
+    <h2>Pins, lines &amp; areas</h2>
     <input id="pinSearch" type="search" placeholder="Search pins" autocomplete="off">
     <details id="showBox" class="showbox">
       <summary>Show on map: <span id="showSummary">all pins</span></summary>
@@ -95,8 +128,14 @@
       <div id="groupChecks"></div>
       <div class="row tight"><button id="btnShowAll">Show all pins</button></div>
     </details>
+    <div class="row tight">
+      <button id="btnDrawLine">〰️ Draw a line</button>
+      <button id="btnDrawArea">🔲 Draw an area</button>
+    </div>
     <div class="row tight"><button id="btnMeasure">Measure distance &amp; walking time</button></div>
     <ul id="pinList"></ul>
+    <h3 id="shapeHead" class="listhead" hidden>Lines &amp; areas</h3>
+    <ul id="shapeList"></ul>
   </section>
 
   <section id="measureSheet" class="sheet" hidden>
@@ -136,10 +175,14 @@
       </ul>
       <p>Give it a name, a type and notes. There are about 25 types, grouped into stands, deer sign (scrapes, rubs, beds, trails, funnels, sightings, sheds), food and water, turkeys and ducks, and access (truck, gate, entry route, property corner, hazard). Pick a <b>color</b> too, or leave it on the type's own color. Colors are handy for sorting spots by year or by who found them. Tap <b>Add photo</b> to take or attach a picture, such as a trail cam shot or a big rub. A <b>range ring</b> draws a 30 to 200 yard circle around the pin. Trail cameras and harvests also keep a date, and cameras show how long ago you checked them.</p>
 
+      <h3>Lines and areas</h3>
+      <p>Open <b>Pins</b> and tap <b>Draw a line</b> or <b>Draw an area</b>. Then tap the map to add points. You can also line up the crosshair and tap <b>✚ Crosshair</b>, which is easier to place exactly. Drag a point to move it, and <b>Undo</b> takes back the last one. A line shows its length and walking time, which is handy for entry routes, deer trails and property lines. An area shows its acres and the distance around it, for bedding areas, food plots, CRP or the land you have permission on. Tap <b>Done</b>, or for an area tap its first point. Then give it a name, color, group and notes.</p>
+      <p>Tap a line or area on the map to edit it, move its points, share it or hide it. They're listed under the pins in <b>Pins</b>, and <b>Show on map</b> can hide all lines or all areas. <b>Share</b> sends a KML file that Woods Map, Google Earth, onX and most map apps can open.</p>
+
       <h3>Using your pins</h3>
       <p>Tap a pin on the map for <b>Go there</b>, <b>Edit</b> and <b>Share</b>. <b>Share</b> sends the pin by text, email or any app, with its photo if it has one. The message has a Google Maps link and a Woods Map link. A friend with Woods Map who opens that link gets the pin ready to save, in a group called "Shared with me". Tap a pin's photo to see it full screen. The <b>Pins</b> button lists every pin, nearest first once GPS is on. You can search, or tap <b>Edit</b> on any row to change or delete a pin.</p>
       <h3>Groups and hiding pins</h3>
-      <p>Every pin belongs to a <b>group</b>, like a folder. Your own pins start in <b>My pins</b>. Type a new name in the pin editor's Group box to start another group, such as "2025 season". In <b>Pins</b>, open <b>Show on map</b> to hide or show any mix of pin types, and to switch whole groups off or on. To hide just one pin, tap it and choose <b>Hide</b>, or tick <b>Hide this pin on the map</b> in the editor. It stays in the Pins list, greyed out, and tapping it there shows it again. Hidden pins aren't deleted, and the Truck button skips them. A yellow chip at the top tells you when pins are hidden. Tap it to show everything again.</p>
+      <p>Every pin, line and area belongs to a <b>group</b>, like a folder. Your own pins start in <b>My pins</b>. Type a new name in the pin editor's Group box to start another group, such as "2025 season". In <b>Pins</b>, open <b>Show on map</b> to hide or show any mix of pin types, and to switch whole groups off or on. To hide just one pin, tap it and choose <b>Hide</b>, or tick <b>Hide this pin on the map</b> in the editor. It stays in the Pins list, greyed out, and tapping it there shows it again. Lines and areas hide the same way, from their own <b>Hide</b> button or editor. Hidden pins aren't deleted, and the Truck button skips them. A yellow chip at the top tells you when pins are hidden. Tap it to show everything again.</p>
 
       <h3>Finding your way</h3>
       <ul>
@@ -171,7 +214,7 @@
       <p>Your pins, tracks and GPS dot work with no signal. Saved maps live on your own phone, so each person downloads their own.</p>
 
       <h3>Backup and sharing</h3>
-      <p>Under <b>More</b>, <b>Export pins (backup)</b> saves a file of your pins, with their colors and photos. <b>Import pins</b> loads one (a Woods Map backup, GPX, or KML from Google Earth and other map apps) and never changes or removes your own pins. It asks which group to put the new pins in, such as "Mike's pins", so you can hide them all in one tap. When restoring your own backup, leave the group empty to keep your groups as they were. To share spots, send the file to a friend and have them import it. Export now and then, since pins live only on this phone.</p>
+      <p>Under <b>More</b>, <b>Export pins (backup)</b> saves a file of your pins, lines and areas, with their colors and photos. <b>Import pins</b> loads one (a Woods Map backup, GPX, or KML from Google Earth and other map apps, including their lines and areas) and never changes or removes your own pins. It asks which group to put the new pins in, such as "Mike's pins", so you can hide them all in one tap. When restoring your own backup, leave the group empty to keep your groups as they were. To share spots, send the file to a friend and have them import it. Export now and then, since pins live only on this phone.</p>
 
       <h3>Good to know</h3>
       <ul>
