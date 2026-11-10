@@ -304,6 +304,11 @@ progress { width: 100%; height: 12px; margin: 6px 0; }
 #trkList li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 #trkList li.muted { border-bottom: 0; }
 #trkList .trkinfo { flex: 1; min-width: 0; }
+#trkList button.trkinfo {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  background: transparent; border: 0; border-radius: 0; padding: 6px 4px; font-weight: 400;
+}
+#trkList .tsw { flex: none; width: 22px; height: 6px; border-radius: 3px; background: var(--c); }
 #trkList button { flex: none; min-height: 40px; padding: 8px 12px; font-size: 14px; }
 
 /* ---- map pins ---- */
@@ -559,3 +564,17 @@ body.drawing #bar, body.drawing #fab, body.drawing #filterChip, body.drawing #na
 .vtx.first::after { width: 18px; height: 18px; background: #e8b53a; }
 .listhead { margin: 16px 0 4px; }
 #shapeList { list-style: none; margin: 0; padding: 0; }
+
+/* ---- routes: trail-snap toggle, elevation profile ---- */
+#drawbar .snapbtn {
+  display: block; width: 100%; margin: 0 0 8px; min-height: 36px; padding: 6px 8px;
+  font: 600 13px system-ui, sans-serif; border-radius: 8px;
+  border: 1px solid var(--btn-line); background: var(--btn); color: var(--ink);
+}
+#drawbar .snapbtn[hidden] { display: none; }
+#drawbar .snapbtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent-line); color: #fff; }
+.elevbox { margin: 0 0 12px; }
+.prof { display: block; width: 100%; height: auto; background: var(--panel-2); border-radius: 8px; margin-bottom: 4px; }
+.prof-fill { fill: var(--accent); opacity: .3; }
+.prof-line { fill: none; stroke: var(--accent-line); stroke-width: 2; }
+.prof-t { fill: var(--muted); font: 600 10px system-ui, sans-serif; }

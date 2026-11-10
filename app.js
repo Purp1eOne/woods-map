@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -321,7 +321,7 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'shapeEditor', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
+  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
   function showSheet(id) {
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });
     $('backdrop').hidden = false;
@@ -610,7 +610,8 @@
   // Lines show their length and walking time; areas show acres and the distance around.
   const SHAPE_KINDS = {
     line: { label: 'Line', icon: '〰️', color: '#f9a825', min: 2 },
-    area: { label: 'Area', icon: '🔲', color: '#ef6c00', min: 3 }
+    area: { label: 'Area', icon: '🔲', color: '#ef6c00', min: 3 },
+    route: { label: 'Route', icon: '🧭', color: '#1565c0', min: 2 }
   };
   const shapeKey = (sh) => '_' + sh.kind; // its entry in hiddenTypes, next to the pin types
   const shapeColor = (sh) => (PIN_COLORS.some(([c]) => c === sh.color) ? sh.color : SHAPE_KINDS[sh.kind].color);
@@ -641,7 +642,86 @@
   function shapeMeasure(sh) {
     if (sh.kind === 'area') return fmtArea(areaOf(sh.pts)) + ' · ' + fmtDist(lengthOf(sh.pts, true)) + ' around';
     const m = lengthOf(sh.pts);
-    return fmtDist(m) + ' · about ' + fmtTime(walkMin(m)) + ' walking';
+    const e = elevFor(sh);
+    return fmtDist(m) + ' · about ' + fmtTime(walkMin(m) + climbMin(e)) + ' walking' + (e ? ' · ' + elevText(e) : '');
+  }
+
+  // ---------- Elevation (USGS 3DEP: 1 m bare-earth, needs a signal; the result is saved with the route or track) ----------
+  const ELEV_URL = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples';
+  const ftOf = (m) => Math.round(m * 3.28084).toLocaleString('en-US') + ' ft';
+  const elevText = (e) => '↗ ' + ftOf(e.gain) + ' up · ↘ ' + ftOf(e.loss) + ' down';
+  const climbMin = (e) => (e ? e.gain / 10 : 0); // about 1 extra minute for every 10 m (33 ft) of climbing
+  const elevKey = (pts) => pts.length + ':' + pts[0][0] + ',' + pts[0][1] + ':' + pts[pts.length - 1][0] + ',' + pts[pts.length - 1][1];
+  const elevFor = (o) => (o && o.elev && o.pts && o.pts.length > 1 && o.elev.k === elevKey(o.pts) ? o.elev : null);
+  // Evenly spaced points along a path, with their distance from the start: [[lat, lng, meters], ...]
+  function samplePath(pts, n) {
+    const ll = toLL(pts), cum = [0];
+    for (let i = 1; i < ll.length; i++) cum.push(cum[i - 1] + dist(ll[i - 1], ll[i]));
+    const total = cum[cum.length - 1], out = [];
+    let j = 1;
+    for (let k = 0; k < n; k++) {
+      const s = total * k / (n - 1);
+      while (j < cum.length - 1 && cum[j] < s) j++;
+      const seg = cum[j] - cum[j - 1], t = seg ? (s - cum[j - 1]) / seg : 0;
+      out.push([ll[j - 1].lat + (ll[j].lat - ll[j - 1].lat) * t, ll[j - 1].lng + (ll[j].lng - ll[j - 1].lng) * t, s]);
+    }
+    return out;
+  }
+  async function fetchElev(pts) {
+    // A walk's pauses (gap = 1 on a point) split it into stretches; the jump across a pause isn't walked, so it's skipped.
+    const parts = [[]];
+    pts.forEach((p, i) => { if (i && p[3]) parts.push([]); parts[parts.length - 1].push(p); });
+    const lens = parts.map((pp) => (pp.length > 1 ? lengthOf(pp) : 0));
+    const total = lens.reduce((a, b) => a + b, 0);
+    const samples = [], starts = new Set();
+    let off = 0;
+    parts.forEach((pp, k) => {
+      if (pp.length < 2 || !lens[k]) return;
+      const n = Math.max(2, Math.round(Math.min(120, Math.ceil(total / 15) + 1) * lens[k] / total));
+      starts.add(samples.length);
+      samplePath(pp, n).forEach(([la, lo, d]) => samples.push([la, lo, off + d]));
+      off += lens[k];
+    });
+    if (samples.length < 2) return null;
+    const geometry = JSON.stringify({ points: samples.map(([la, lo]) => [+lo.toFixed(6), +la.toFixed(6)]), spatialReference: { wkid: 4326 } });
+    const q = new URLSearchParams({ geometry, geometryType: 'esriGeometryMultipoint', returnFirstValueOnly: 'true', interpolation: 'RSP_BilinearInterpolation', f: 'json' });
+    const r = await fetch(ELEV_URL + '?' + q, { signal: AbortSignal.timeout(15000) });
+    const j = await r.json();
+    const vals = new Map((j.samples || []).map((x) => [x.locationId, parseFloat(x.value)]));
+    const prof = samples.map((x, i) => [Math.round(x[2]), vals.get(i), starts.has(i)]).filter(([, e]) => isFinite(e) && e > -100);
+    if (prof.length < 2) return null;
+    let gain = 0, loss = 0;
+    for (let i = 1; i < prof.length; i++) { if (prof[i][2]) continue; const d = prof[i][1] - prof[i - 1][1]; if (d > 0) gain += d; else loss -= d; }
+    return { k: elevKey(pts), prof: prof.map(([d, e]) => [d, +e.toFixed(1)]), gain: Math.round(gain), loss: Math.round(loss) };
+  }
+  const elevBusy = new WeakSet();
+  // Look up elevation once (if there's a signal), then save it and call after().
+  function ensureElev(o, save, after) {
+    if (!o.pts || o.pts.length < 2 || elevFor(o) || elevBusy.has(o)) return;
+    elevBusy.add(o);
+    fetchElev(o.pts).then((e) => { if (e) { o.elev = e; save(); if (after) after(); } })
+      .catch(() => {}).finally(() => elevBusy.delete(o));
+  }
+  function profileSVG(e) {
+    const W = 300, H = 90, B = H - 14;
+    const d1 = e.prof[e.prof.length - 1][0] || 1;
+    const es = e.prof.map((p) => p[1]);
+    const lo = Math.min(...es), hi = Math.max(...es), span = Math.max(hi - lo, 3);
+    const x = (d) => (d / d1 * W).toFixed(1), y = (v) => (B - (v - lo) / span * (B - 14)).toFixed(1);
+    const line = e.prof.map(([d, v], i) => (i ? 'L' : 'M') + x(d) + ' ' + y(v)).join(' ');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="prof" role="img" aria-label="Elevation profile from ' + ftOf(lo) + ' to ' + ftOf(hi) + '">' +
+      '<path class="prof-fill" d="' + line + ' L' + W + ' ' + B + ' L0 ' + B + ' Z"/><path class="prof-line" d="' + line + '"/>' +
+      '<text class="prof-t" x="2" y="10">' + ftOf(hi) + '</text><text class="prof-t" x="2" y="' + (H - 2) + '">' + ftOf(lo) + '</text>' +
+      '<text class="prof-t" x="' + W + '" y="' + (H - 2) + '" text-anchor="end">' + fmtDist(d1) + '</text></svg>';
+  }
+  // The elevation box in an editor: the profile, or a note while it loads (or if there's no signal).
+  function renderElevBox(box, o, save, onLoad) {
+    if (!o.pts || o.pts.length < 2 || o.kind === 'area') { box.hidden = true; return; }
+    box.hidden = false;
+    const e = elevFor(o);
+    if (e) { box.innerHTML = profileSVG(e) + '<div class="muted small">' + elevText(e) + ' · USGS elevation</div>'; return; }
+    box.innerHTML = '<div class="muted small">' + (navigator.onLine === false ? 'Elevation needs a signal. It will load next time you open this with service.' : 'Loading elevation…') + '</div>';
+    ensureElev(o, save, () => { renderElevBox(box, o, save); if (onLoad) onLoad(); });
   }
 
   const shapeLayers = new Map();
@@ -710,6 +790,7 @@
       actions.appendChild(b);
     };
     btn('Edit', false, () => openShapeEditor(sh, false));
+    if (sh.kind !== 'area') btn('Follow', true, () => startFollow(sh));
     btn('Move points', true, () => startDraw(sh.kind, sh));
     btn('Share', true, () => shareShape(sh));
     btn('Hide', true, () => { setShapeHidden(sh, true); toast('"' + sh.name + '" hidden. It stays in the Pins list, where a tap shows it again.', 4500); });
@@ -724,34 +805,95 @@
   }
 
   // Drawing: tap the map (or use the crosshair) to add points, drag a point to move it.
+  // A route can follow trails and roads (like onX's Snap To): each leg between two of your points comes
+  // from the OpenStreetMap walking router, which needs a signal. Woods trails missing from OpenStreetMap won't snap.
+  const ROUTER = 'https://routing.openstreetmap.de/routed-foot/route/v1/foot/';
+  let snapOn = recall(STORE.snap, true) !== false;
   const vtxIcon = (first) => L.divIcon({ className: '', html: '<div class="vtx' + (first ? ' first' : '') + '"></div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+  // A route's own points (the ones you placed) as indexes into its full path. Imported routes get a few spread along them.
+  function viaOf(sh) {
+    if (sh.kind !== 'route') return null;
+    const n = sh.pts.length;
+    if (Array.isArray(sh.vi) && sh.vi.length >= 2 && sh.vi[0] === 0 && sh.vi[sh.vi.length - 1] === n - 1) return sh.vi;
+    if (n <= 40) return sh.pts.map((_, i) => i);
+    return Array.from({ length: 25 }, (_, i) => Math.round(i * (n - 1) / 24));
+  }
   function startDraw(kind, existing) {
     if (draw) stopDraw();
     closeSheets();
     map.closePopup();
-    draw = { kind, shape: existing || null, pts: existing ? existing.pts.map((p) => p.slice()) : [], vtx: [], preview: null };
-    if (existing) syncShape(existing); // hide the saved copy while its points are moved
+    draw = { kind, shape: existing || null, pts: [], segs: [], vtx: [], preview: null, busy: 0 };
+    if (existing) {
+      const vi = viaOf(existing);
+      const xy = (p) => [p[0], p[1]];
+      if (vi) {
+        draw.pts = vi.map((i) => xy(existing.pts[i]));
+        draw.segs = vi.slice(1).map((j, n) => existing.pts.slice(vi[n], j + 1).map(xy));
+        draw.segs.forEach((sg, n) => { sg[0] = draw.pts[n]; sg[sg.length - 1] = draw.pts[n + 1]; });
+      } else draw.pts = existing.pts.map(xy);
+      syncShape(existing); // hide the saved copy while its points are moved
+    }
     document.body.classList.add('drawing');
     $('drawbar').hidden = false;
+    $('btnDrawSnap').hidden = kind !== 'route';
     redrawDraft();
+  }
+  // The whole path being drawn: the points themselves, or for a route its legs joined end to end.
+  function draftPath() {
+    if (draw.kind !== 'route' || draw.pts.length < 2) return draw.pts.slice();
+    return draw.segs.reduce((acc, sg, i) => acc.concat(i ? sg.slice(1) : sg), []);
+  }
+  async function snapLeg(i) {
+    const d = draw;
+    const a = d.pts[i], b = d.pts[i + 1];
+    d.segs[i] = [a, b];
+    if (!snapOn) return;
+    d.busy++;
+    drawStatus();
+    try {
+      const r = await fetch(ROUTER + a[1] + ',' + a[0] + ';' + b[1] + ',' + b[0] + '?overview=full&geometries=geojson', { signal: AbortSignal.timeout(12000) });
+      const j = await r.json();
+      const c = j.code === 'Ok' && j.routes && j.routes[0] && j.routes[0].geometry.coordinates;
+      if (!c || c.length < 2) throw new Error('no route');
+      const straight = dist({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] });
+      // A huge detour means there's no trail between these points; a straight line is more useful.
+      if (j.routes[0].distance > straight * 4 + 400) throw new Error('detour');
+      if (draw !== d || d.pts[i] !== a || d.pts[i + 1] !== b) return; // the points moved while we waited
+      d.segs[i] = [a, ...c.map(([lo, la]) => [+la.toFixed(6), +lo.toFixed(6)]), b];
+    } catch (e) {
+      if (draw === d) toast(navigator.onLine === false ? 'No signal, so that leg is a straight line.' : 'No trail or road links those points, so that leg is a straight line.', 3500);
+    } finally {
+      d.busy--;
+      if (draw === d) redrawDraft();
+    }
   }
   function redrawDraft() {
     if (!draw) return;
     const k = SHAPE_KINDS[draw.kind];
     const c = draw.shape ? shapeColor(draw.shape) : k.color;
     if (draw.preview) map.removeLayer(draw.preview);
-    const ll = draw.pts.map(([a, b]) => [a, b]);
+    const ll = draftPath();
     draw.preview = (draw.kind === 'area' && ll.length > 2
       ? L.polygon(ll, { color: c, weight: 3, dashArray: '6 6', fillColor: c, fillOpacity: 0.15, interactive: false })
-      : L.polyline(ll, { color: c, weight: 4, dashArray: '6 6', interactive: false })).addTo(map);
+      : L.polyline(ll, { color: c, weight: 4, dashArray: draw.kind === 'route' ? null : '6 6', interactive: false })).addTo(map);
     draw.vtx.forEach((m) => map.removeLayer(m));
     draw.vtx = draw.pts.map((p, i) => {
-      const m = L.marker(p, { icon: vtxIcon(i === 0 && draw.kind === 'area'), draggable: true, zIndexOffset: 1000, keyboard: false });
+      const m = L.marker(p, { icon: vtxIcon(i === 0 && draw.kind !== 'line'), draggable: true, zIndexOffset: 1000, keyboard: false });
       m.on('drag', (e) => {
         const q = e.target.getLatLng();
         draw.pts[i] = [q.lat, q.lng];
-        draw.preview.setLatLngs(draw.pts.map(([a, b]) => [a, b]));
+        if (draw.kind === 'route') { // straight while dragging, snapped again on release
+          if (i > 0) draw.segs[i - 1] = [draw.pts[i - 1], draw.pts[i]];
+          if (i < draw.pts.length - 1) draw.segs[i] = [draw.pts[i], draw.pts[i + 1]];
+        }
+        draw.preview.setLatLngs(draftPath());
         drawStatus();
+      });
+      m.on('dragend', () => {
+        if (draw.kind !== 'route') return;
+        if (i > 0) snapLeg(i - 1);
+        if (i < draw.pts.length - 1) snapLeg(i);
+        redrawDraft();
       });
       // Tapping the first point of an area closes it.
       m.on('click', () => { if (i === 0 && draw.kind === 'area' && draw.pts.length >= 3) finishDraw(); });
@@ -762,21 +904,25 @@
   function drawStatus() {
     const k = SHAPE_KINDS[draw.kind];
     const n = draw.pts.length;
-    const what = (draw.shape ? 'Moving points: ' + draw.shape.name : 'New ' + k.label.toLowerCase());
+    const what = draw.shape ? 'Moving points: ' + draw.shape.name : 'New ' + k.label.toLowerCase();
     let m = '';
-    if (draw.kind === 'line' && n >= 2) m = shapeMeasure({ kind: 'line', pts: draw.pts });
+    if (draw.kind !== 'area' && n >= 2) m = shapeMeasure({ kind: draw.kind, pts: draftPath() });
     if (draw.kind === 'area' && n >= 3) m = shapeMeasure({ kind: 'area', pts: draw.pts });
     $('drawText').textContent = what + (m ? ' · ' + m : '');
-    $('drawHint').textContent = n < k.min
-      ? 'Tap the map to add points' + (n ? ' (' + n + ' so far, ' + k.min + ' needed)' : '') + ', or line up the crosshair and tap ✚.'
+    $('drawHint').textContent = draw.busy ? 'Finding the trail…'
+      : n < k.min ? 'Tap the map to add points' + (n ? ' (' + n + ' so far, ' + k.min + ' needed)' : '') + ', or line up the crosshair and tap ✚.'
       : 'Drag a point to move it.' + (draw.kind === 'area' ? ' Tap the first point or Done to finish.' : ' Tap Done to finish.');
     $('btnDrawUndo').disabled = !n;
-    $('btnDrawDone').disabled = n < k.min;
+    $('btnDrawDone').disabled = n < k.min || draw.busy > 0;
+    $('btnDrawSnap').textContent = snapOn ? '🥾 Follow trails & roads: on' : '🥾 Follow trails & roads: off (straight lines)';
+    $('btnDrawSnap').setAttribute('aria-pressed', String(snapOn));
   }
   function addDrawPoint(lat, lng) {
     if (!draw) return;
     if (draw.pts.length >= 500) return toast('That\'s the most points one line or area can have.');
     draw.pts.push([lat, lng]);
+    const n = draw.pts.length;
+    if (draw.kind === 'route' && n >= 2) snapLeg(n - 2);
     redrawDraft();
   }
   map.on('click', (e) => addDrawPoint(e.latlng.lat, e.latlng.lng));
@@ -791,28 +937,40 @@
     $('drawbar').hidden = true;
   }
   function finishDraw() {
-    if (!draw || draw.pts.length < SHAPE_KINDS[draw.kind].min) return;
-    const pts = draw.pts.map(([a, b]) => [+a.toFixed(6), +b.toFixed(6)]);
+    if (!draw || draw.pts.length < SHAPE_KINDS[draw.kind].min || draw.busy) return;
+    const r6 = ([a, b]) => [+a.toFixed(6), +b.toFixed(6)];
+    const pts = draftPath().map(r6);
+    let vi;
+    if (draw.kind === 'route') { vi = [0]; draw.segs.forEach((sg) => vi.push(vi[vi.length - 1] + sg.length - 1)); }
     const { kind, shape } = draw;
     stopDraw();
     if (shape) {
       shape.pts = pts;
+      if (vi) shape.vi = vi;
       saveShapes();
       refreshShape(shape);
+      if (kind !== 'area') ensureElev(shape, saveShapes);
       toast(shape.name + ': ' + shapeMeasure(shape), 4000);
     } else {
-      openShapeEditor({ kind, pts, name: '', notes: '' }, true);
+      openShapeEditor({ kind, pts, ...(vi ? { vi } : {}), name: '', notes: '' }, true);
     }
   }
-  $('btnDrawUndo').addEventListener('click', () => { if (draw && draw.pts.length) { draw.pts.pop(); redrawDraft(); } });
+  $('btnDrawUndo').addEventListener('click', () => {
+    if (!draw || !draw.pts.length) return;
+    draw.pts.pop();
+    draw.segs.length = Math.max(0, draw.pts.length - 1);
+    redrawDraft();
+  });
   $('btnDrawCenter').addEventListener('click', () => { const c = map.getCenter(); addDrawPoint(c.lat, c.lng); });
   $('btnDrawDone').addEventListener('click', finishDraw);
+  $('btnDrawSnap').addEventListener('click', () => { snapOn = !snapOn; store(STORE.snap, snapOn); drawStatus(); toast(snapOn ? 'New legs follow trails and roads where it can find them.' : 'New legs are straight lines.', 3000); });
   $('btnDrawCancel').addEventListener('click', () => {
     if (draw && !draw.shape && draw.pts.length > 1 && !confirm('Throw away this ' + SHAPE_KINDS[draw.kind].label.toLowerCase() + '?')) return;
     stopDraw();
   });
   $('btnDrawLine').addEventListener('click', () => startDraw('line'));
   $('btnDrawArea').addEventListener('click', () => startDraw('area'));
+  $('btnDrawRoute').addEventListener('click', () => startDraw('route'));
 
   // Line / area editor sheet
   let shapeEditing = null, shapePicked = '';
@@ -824,16 +982,19 @@
     const k = SHAPE_KINDS[sh.kind];
     $('shapeTitle').textContent = (isNew ? 'New ' : 'Edit ') + k.label.toLowerCase();
     $('shapeName').value = sh.name || '';
-    $('shapeName').placeholder = sh.kind === 'area' ? 'e.g. North bedding area' : 'e.g. Entry route to ridge stand';
+    $('shapeName').placeholder = sh.kind === 'area' ? 'e.g. North bedding area' : sh.kind === 'route' ? 'e.g. Dark-morning walk to ridge stand' : 'e.g. Fence line';
     $('shapeNotes').value = sh.notes || '';
     $('shapeGroup').value = isNew ? '' : groupOf(sh);
     $('groupNames').replaceChildren(...groupNames().map((g) => { const o = document.createElement('option'); o.value = g; return o; }));
     $('shapeHide').checked = !!sh.hidden;
     $('shapeMeasure').textContent = shapeMeasure(sh);
+    renderElevBox($('shapeElev'), sh, () => { if (shapes.includes(sh)) saveShapes(); },
+      () => { if (shapeEditing && shapeEditing.sh === sh) $('shapeMeasure').textContent = shapeMeasure(sh); });
     shapePicked = shapeColor(sh);
     renderShapeSwatches();
     $('btnShapeDelete').hidden = isNew;
     $('btnShapePoints').hidden = isNew;
+    $('btnShapeFollow').hidden = isNew || sh.kind === 'area';
     showSheet('shapeEditor');
   }
   $('btnShapeSave').addEventListener('click', () => {
@@ -848,6 +1009,7 @@
     if (isNew) { sh.id = newId(); sh.created = Date.now(); shapes.push(sh); }
     saveShapes();
     refreshShape(sh);
+    if (sh.kind !== 'area') ensureElev(sh, saveShapes);
     closeSheets();
     shapeEditing = null;
     applyFilter();
@@ -855,6 +1017,7 @@
     else toast('Saved. It\'s hidden right now; turn it on under Pins > Show on map.', 5000);
   });
   $('btnShapeCancel').addEventListener('click', () => { closeSheets(); shapeEditing = null; });
+  $('btnShapeFollow').addEventListener('click', () => { const sh = shapeEditing && shapeEditing.sh; shapeEditing = null; if (sh) startFollow(sh); });
   $('btnShapePoints').addEventListener('click', () => { const sh = shapeEditing && shapeEditing.sh; shapeEditing = null; if (sh) startDraw(sh.kind, sh); });
   $('btnShapeDelete').addEventListener('click', () => {
     if (!shapeEditing || shapeEditing.isNew) return;
@@ -863,6 +1026,7 @@
     shapes = shapes.filter((x) => x.id !== sh.id);
     saveShapes();
     removeShape(sh.id);
+    if (follow && follow.obj === sh) stopFollow();
     closeSheets();
     shapeEditing = null;
     applyFilter();
@@ -904,7 +1068,9 @@
       const [f, l] = [pts[0], pts[pts.length - 1]];
       if (f[0] === l[0] && f[1] === l[1]) pts.pop(); // KML and GPX repeat the first point to close an area
     }
-    if (pts.length > 500) { const step = pts.length / 500; pts = Array.from({ length: 500 }, (_, i) => pts[Math.floor(i * step)]); }
+    const cap = x.kind === 'route' ? 3000 : 500;
+    if (pts.length > cap) { const step = (pts.length - 1) / (cap - 1); pts = Array.from({ length: cap }, (_, i) => pts[Math.round(i * step)]); }
+    const vi = x.kind === 'route' && Array.isArray(x.vi) && x.vi.every((v, i) => Number.isInteger(v) && v >= 0 && v < pts.length && (!i || v > x.vi[i - 1])) ? x.vi : null;
     if (pts.length < SHAPE_KINDS[x.kind].min) return null;
     return {
       id: newId(),
@@ -915,6 +1081,8 @@
       group: intoGroup || cleanGroup(x.group),
       ...(!intoGroup && x.hidden ? { hidden: true } : {}),
       pts,
+      ...(vi ? { vi } : {}),
+      ...(x.elev && x.elev.k === elevKey(pts) && Array.isArray(x.elev.prof) ? { elev: x.elev } : {}),
       created: x.created || Date.now()
     };
   }
@@ -1199,7 +1367,7 @@
     if (shapes.length && !items.length) {
       const li = document.createElement('li');
       li.className = 'muted';
-      li.textContent = shown.length ? 'No lines or areas match.' : 'All lines and areas are hidden (Show on map, above).';
+      li.textContent = shown.length ? 'No routes, lines or areas match.' : 'All routes, lines and areas are hidden (Show on map, above).';
       ul.appendChild(li);
     }
   }
@@ -1262,13 +1430,15 @@
   $('btnLocate').addEventListener('contextmenu', (e) => { e.preventDefault(); stopGPS(); toast('GPS tracking off'); });
 
   // ---------- Navigate to a pin ----------
-  let target = null, navLine = null;
+  let target = null, navLine = null, follow = null; // follow: following a route, line or walk (see below)
   function setTarget(id) {
+    if (id) stopFollow(true);
     target = id ? pins.find((p) => p.id === id) || null : null;
     if (target && watchId === null) { centerOnFix = false; startGPS(); }
     updateNav();
   }
   function updateNav() {
+    if (follow) return updateFollow();
     const box = $('navinfo');
     if (!target) {
       box.hidden = true;
@@ -1286,7 +1456,7 @@
     if (!navLine) navLine = L.polyline(pts, { color: '#e8b53a', weight: 4, dashArray: '8 8', interactive: false }).addTo(map);
     else navLine.setLatLngs(pts);
   }
-  $('navStop').addEventListener('click', () => setTarget(null));
+  $('navStop').addEventListener('click', () => { if (follow) stopFollow(); else setTarget(null); });
 
   // ---------- Walking pace + measure between two points ----------
   function fillPace(sel) {
@@ -1572,14 +1742,14 @@
 
   const blobToDataURL = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
   $('btnExportJson').addEventListener('click', async () => {
-    if (!pins.length && !shapes.length) return toast('No pins to export yet');
+    if (!pins.length && !shapes.length && !tracks.length) return toast('No pins to export yet');
     // Photos go in the backup too (as text), so a restore or a friend gets them.
     const out = [];
     for (const p of pins) {
       const b = p.photo ? await getPhoto(p.id) : null;
       out.push(b ? { ...p, photoData: await blobToDataURL(b) } : p);
     }
-    download('woods-map-pins-' + stamp() + '.json', JSON.stringify({ app: 'woods-map', pins: out, shapes }, null, 2), 'application/json');
+    download('woods-map-pins-' + stamp() + '.json', JSON.stringify({ app: 'woods-map', pins: out, shapes, tracks: tracks.filter((t) => t !== rec) }, null, 2), 'application/json');
   });
 
   function toGPX() {
@@ -1592,8 +1762,10 @@
       '  </wpt>'
     ).join('\n');
     // Lines and areas go in as tracks; an area is closed (ends where it starts) and has type "area".
-    const t = shapes.map((sh) =>
-      '  <trk>\n    <name>' + esc(sh.name) + '</name>\n    <desc>' + esc(sh.notes || '') + '</desc>\n    <type>' + sh.kind + '</type>\n    <trkseg>\n' +
+    const t = shapes.map((sh) => sh.kind === 'route'
+      ? '  <rte>\n    <name>' + esc(sh.name) + '</name>\n    <desc>' + esc(sh.notes || '') + '</desc>\n' +
+        sh.pts.map(([la, lo]) => '    <rtept lat="' + la + '" lon="' + lo + '"/>').join('\n') + '\n  </rte>'
+      : '  <trk>\n    <name>' + esc(sh.name) + '</name>\n    <desc>' + esc(sh.notes || '') + '</desc>\n    <type>' + sh.kind + '</type>\n    <trkseg>\n' +
       (sh.kind === 'area' ? [...sh.pts, sh.pts[0]] : sh.pts).map(([la, lo]) => '      <trkpt lat="' + la + '" lon="' + lo + '"/>').join('\n') +
       '\n    </trkseg>\n  </trk>'
     ).join('\n');
@@ -1611,7 +1783,7 @@
     if (!file) return;
     try {
       const text = (await file.text()).trim();
-      let incoming = [], inShapes = [];
+      let incoming = [], inShapes = [], inTracks = [];
       if (text.startsWith('<')) {
         const doc = new DOMParser().parseFromString(text, 'text/xml');
         const txtIn = (node, tag) => { const el = node.getElementsByTagName(tag)[0]; return el ? el.textContent.trim() : ''; };
@@ -1645,25 +1817,27 @@
         for (const tr of Array.from(doc.getElementsByTagName('trk'))) {
           inShapes.push({ kind: txtIn(tr, 'type') === 'area' ? 'area' : 'line', name: txtIn(tr, 'name'), notes: txtIn(tr, 'desc'), pts: gpxPts(tr, 'trkpt') });
         }
-        for (const rt of Array.from(doc.getElementsByTagName('rte'))) inShapes.push({ kind: 'line', name: txtIn(rt, 'name'), notes: txtIn(rt, 'desc'), pts: gpxPts(rt, 'rtept') });
+        for (const rt of Array.from(doc.getElementsByTagName('rte'))) inShapes.push({ kind: 'route', name: txtIn(rt, 'name'), notes: txtIn(rt, 'desc'), pts: gpxPts(rt, 'rtept') });
       } else {
         const data = JSON.parse(text);
         incoming = Array.isArray(data) ? data : (data.pins || []);
         inShapes = Array.isArray(data.shapes) ? data.shapes : [];
+        inTracks = Array.isArray(data.tracks) ? data.tracks : [];
       }
       incoming = incoming.filter((p) => p && isFinite(p.lat) && isFinite(p.lng));
       inShapes = inShapes.filter((x) => cleanShape(x, 'x'));
-      if (!incoming.length && !inShapes.length) return toast('No pins, lines or areas found in that file.');
+      if (!incoming.length && !inShapes.length && !inTracks.length) return toast('No pins, lines, areas, routes or walks found in that file.');
       // Put imported pins in their own group so they can be hidden in one tap.
       const fileGroups = new Set([...incoming, ...inShapes].map((p) => p.group).filter(Boolean));
       const suggest = 'Imported ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
-      const nL = inShapes.filter((x) => x.kind === 'line').length, nA = inShapes.length - nL;
-      const what = [incoming.length ? plural(incoming.length, 'pin') : '', nL ? plural(nL, 'line') : '', nA ? plural(nA, 'area') : ''].filter(Boolean).join(', ');
-      const answer = prompt(what + ' in this file. Put them in which group? (for example: Mike\'s pins)' +
+      const nK = (k) => inShapes.filter((x) => x.kind === k).length;
+      const what = [incoming.length ? plural(incoming.length, 'pin') : '', ...Object.keys(SHAPE_KINDS).map((k) => (nK(k) ? plural(nK(k), k) : ''))].filter(Boolean).join(', ');
+      // Walks (tracks) aren't in groups, so a file with only walks doesn't ask.
+      const answer = !what ? '' : prompt(what + ' in this file. Put them in which group? (for example: Mike\'s pins)' +
         (fileGroups.size ? '\nLeave it empty to keep the groups saved in the file, e.g. when restoring your own backup.' : ''), fileGroups.size ? '' : suggest);
       if (answer === null) return toast('Import cancelled');
-      const intoGroup = answer.trim() ? cleanGroup(answer) : (fileGroups.size ? null : cleanGroup(suggest));
+      const intoGroup = !what ? null : answer.trim() ? cleanGroup(answer) : (fileGroups.size ? null : cleanGroup(suggest));
       let added = 0;
       for (const p of incoming) {
         if (!isFinite(p.lat) || !isFinite(p.lng)) continue;
@@ -1702,10 +1876,11 @@
         addedShapes++;
       }
       if (addedShapes) saveShapes();
+      const addedTracks = importTracks(inTracks);
       if (intoGroup && (added || addedShapes)) hiddenGroups.delete(intoGroup); // show what was just imported
       applyFilter();
       closeSheets();
-      const got = [added ? plural(added, 'pin') : '', addedShapes ? addedShapes + (addedShapes === 1 ? ' line or area' : ' lines and areas') : ''].filter(Boolean).join(' and ');
+      const got = [added ? plural(added, 'pin') : '', addedShapes ? addedShapes + (addedShapes === 1 ? ' line, area or route' : ' lines, areas and routes') : '', addedTracks ? plural(addedTracks, 'walk') : ''].filter(Boolean).join(' and ');
       toast(got ? 'Imported ' + got + (intoGroup ? ' into "' + intoGroup + '"' : '') : 'Nothing new to import');
     } catch (err) {
       toast('That file could not be read.');
@@ -2009,13 +2184,19 @@
   $('btnInsClose').addEventListener('click', closeSheets);
 
   // ---------- Track recording ----------
+  // A track (a recorded walk): { id, name, start, end, pts: [[lat, lng, unixSeconds, gap?], ...], meters, color?, notes?, shown?, elev? }
+  // gap = 1 marks the first point after a pause, so the pause doesn't count as distance or walking time.
+  const TRACK_COLOR = '#ef6c00';
+  const trackMeters = (pts) => {
+    let m = 0;
+    for (let i = 1; i < pts.length; i++) if (!pts[i][3]) m += dist({ lat: pts[i - 1][0], lng: pts[i - 1][1] }, { lat: pts[i][0], lng: pts[i][1] });
+    return m;
+  };
   let tracks = recall(STORE.tracks, []);
   tracks.forEach((t) => {
     if (!t.end) t.end = t.pts.length ? t.pts[t.pts.length - 1][2] * 1000 : t.start;
-    if (typeof t.meters !== 'number') {
-      t.meters = 0;
-      for (let i = 1; i < t.pts.length; i++) t.meters += dist({ lat: t.pts[i - 1][0], lng: t.pts[i - 1][1] }, { lat: t.pts[i][0], lng: t.pts[i][1] });
-    }
+    if (typeof t.meters !== 'number') t.meters = trackMeters(t.pts);
+    delete t.paused; delete t.gapNext;
   });
   let rec = null;
   let wakeLock = null;
@@ -2025,18 +2206,76 @@
     const m = Math.round(ms / 60000);
     return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
   };
+  const trackColor = (t) => (PIN_COLORS.some(([c]) => c === t.color) ? t.color : TRACK_COLOR);
+  // Moving time counts the stretches where you were walking at least 0.2 m/s (about half a mile an hour).
+  function trackStats(t) {
+    let moving = 0;
+    for (let i = 1; i < t.pts.length; i++) {
+      const a = t.pts[i - 1], b = t.pts[i];
+      const dt = b[2] - a[2];
+      if (b[3] || dt <= 0 || dt > 120) continue;
+      if (dist({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] }) / dt >= 0.2) moving += dt;
+    }
+    return { total: (t.end || Date.now()) - t.start, moving: moving * 1000, mph: moving > 30 ? t.meters / moving * 2.23694 : 0 };
+  }
+  function trackSummary(t) {
+    const st = trackStats(t), e = elevFor(t);
+    return [fmtDist(t.meters), fmtDur(st.total), st.mph ? st.mph.toFixed(1) + ' mph' : '', e ? elevText(e) : ''].filter(Boolean).join(' · ');
+  }
 
   function showTrack(t, active) {
     const ll = t.pts.map((p) => [p[0], p[1]]);
     let l = trackLines.get(t.id);
     if (!l) {
-      l = L.polyline(ll, { color: active ? '#d84315' : '#ef6c00', weight: 4, opacity: 0.9, interactive: false }).addTo(map);
+      l = L.polyline(ll, { color: active ? '#d84315' : trackColor(t), weight: 4, opacity: 0.9, dashArray: active ? null : '10 6', interactive: !active }).addTo(map);
+      l.on('click', (e) => { if (!draw) L.popup().setLatLng(e.latlng).setContent(trackPopup(t)).openOn(map); });
       trackLines.set(t.id, l);
     } else l.setLatLngs(ll);
+    if (!active && !t.shown) { t.shown = true; saveTracks(); }
   }
-  function hideTrack(id) {
+  function hideTrack(id, keepShown) {
     const l = trackLines.get(id);
     if (l) { map.removeLayer(l); trackLines.delete(id); }
+    const t = tracks.find((x) => x.id === id);
+    if (t && t.shown && !keepShown) { delete t.shown; saveTracks(); }
+  }
+  function restyleTrack(t) {
+    if (!trackLines.has(t.id)) return;
+    hideTrack(t.id, true);
+    showTrack(t, false);
+  }
+  tracks.forEach((t) => { if (t.shown && t.pts.length > 1) showTrack(t, false); });
+
+  function trackPopup(t) {
+    const div = document.createElement('div');
+    div.className = 'pp';
+    const h = document.createElement('strong');
+    h.textContent = t.name;
+    const meta = document.createElement('div');
+    meta.className = 'pp-meta';
+    meta.textContent = 'Walk · ' + trackSummary(t);
+    div.append(h, meta);
+    if (t.notes) {
+      const n = document.createElement('div');
+      n.className = 'pp-notes';
+      n.textContent = t.notes;
+      div.appendChild(n);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'pp-actions';
+    const btn = (label, alt, fn) => {
+      const b = document.createElement('button');
+      if (alt) b.className = 'alt';
+      b.textContent = label;
+      b.addEventListener('click', () => { map.closePopup(); fn(); });
+      actions.appendChild(b);
+    };
+    btn('Details', false, () => openTrackDetail(t));
+    btn('Follow back', true, () => startFollow(t, true));
+    btn('Share', true, () => shareTrack(t));
+    btn('Hide', true, () => hideTrack(t.id));
+    div.appendChild(actions);
+    return div;
   }
 
   async function keepAwake() {
@@ -2051,7 +2290,7 @@
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
   document.addEventListener('visibilitychange', () => {
-    if (rec && document.visibilityState === 'visible') keepAwake();
+    if (rec && !rec.paused && document.visibilityState === 'visible') keepAwake();
     if (rec && document.visibilityState === 'hidden') saveTracks();
   });
 
@@ -2068,50 +2307,65 @@
     updateTrackUI();
     toast('Recording. Keep the screen on and the app open.', 4500);
   }
+  function pauseTrack() {
+    if (!rec) return;
+    rec.paused = !rec.paused;
+    if (rec.paused) { releaseAwake(); toast('Paused. Distance and time stop counting until you resume.', 4000); }
+    else { rec.gapNext = true; keepAwake(); toast('Recording again'); }
+    saveTracks();
+    updateTrackUI();
+  }
   function stopTrack() {
     if (!rec) return;
     const t = rec;
     rec = null;
     releaseAwake();
+    delete t.paused; delete t.gapNext;
     t.end = Date.now();
-    hideTrack(t.id);
+    hideTrack(t.id, true);
     if (t.pts.length < 2) {
       tracks = tracks.filter((x) => x !== t);
       toast('That walk was too short to save.');
     } else {
       showTrack(t, false);
       toast('Saved ' + fmtDist(t.meters) + ' in ' + fmtDur(t.end - t.start));
+      ensureElev(t, saveTracks);
     }
     saveTracks();
     updateTrackUI();
     if (!$('trackSheet').hidden) renderTrackList();
   }
   function addTrackPoint(lat, lng, acc) {
-    if (!rec || acc > 35) return;
+    if (!rec || rec.paused || acc > 35) return;
     const last = rec.pts[rec.pts.length - 1];
-    if (last) {
+    const gap = rec.gapNext && last;
+    if (last && !gap) {
       const d = dist({ lat: last[0], lng: last[1] }, { lat, lng });
       if (d < Math.max(6, acc / 2)) return;
       rec.meters += d;
     }
-    rec.pts.push([+lat.toFixed(5), +lng.toFixed(5), Math.round(Date.now() / 1000)]);
+    delete rec.gapNext;
+    rec.pts.push([+lat.toFixed(5), +lng.toFixed(5), Math.round(Date.now() / 1000), ...(gap ? [1] : [])]);
     const l = trackLines.get(rec.id);
     if (l) l.addLatLng([lat, lng]);
     if (rec.pts.length % 10 === 0) saveTracks();
     if (rec.pts.length >= 20000) { toast('Track is full, so recording stopped.'); stopTrack(); return; }
     updateTrackUI();
   }
+  function recStatus() {
+    if (!rec) return 'Not recording';
+    const st = trackStats(rec);
+    return (rec.paused ? 'Paused' : 'Recording') + ' · ' + fmtDist(rec.meters) + ' · ' + fmtDur(st.total) + (st.mph ? ' · ' + st.mph.toFixed(1) + ' mph' : '') + ' · ' + rec.pts.length + ' points';
+  }
   function updateTrackUI() {
-    $('fabTrack').classList.toggle('rec', !!rec);
-    $('fabTrackLbl').textContent = rec ? fmtDist(rec.meters) : 'Track';
-    $('btnTrkToggle').textContent = rec ? 'Stop recording' : 'Start recording';
+    $('fabTrack').classList.toggle('rec', !!rec && !rec.paused);
+    $('fabTrackLbl').textContent = rec ? (rec.paused ? 'Paused' : fmtDist(rec.meters)) : 'Track';
+    $('btnTrkToggle').textContent = rec ? 'Stop & save' : 'Start recording';
     $('btnTrkToggle').classList.toggle('danger', !!rec);
     $('btnTrkToggle').classList.toggle('primary', !rec);
-    if (!$('trackSheet').hidden) {
-      $('trkStatus').textContent = rec
-        ? 'Recording · ' + fmtDist(rec.meters) + ' · ' + fmtDur(Date.now() - rec.start) + ' · ' + rec.pts.length + ' points'
-        : 'Not recording';
-    }
+    $('btnTrkPause').hidden = !rec;
+    $('btnTrkPause').textContent = rec && rec.paused ? '▶ Resume' : '⏸ Pause';
+    if (!$('trackSheet').hidden) $('trkStatus').textContent = recStatus();
   }
   function renderTrackList() {
     const ul = $('trkList');
@@ -2126,15 +2380,21 @@
     }
     for (const t of done) {
       const li = document.createElement('li');
-      const info = document.createElement('span');
+      const info = document.createElement('button');
       info.className = 'trkinfo';
+      const sw = document.createElement('span');
+      sw.className = 'tsw';
+      sw.style.setProperty('--c', trackColor(t));
+      const tx = document.createElement('span');
       const a = document.createElement('span');
       a.className = 'pt';
       a.textContent = t.name;
       const b = document.createElement('span');
       b.className = 'ps';
-      b.textContent = fmtDist(t.meters) + ' · ' + fmtDur(t.end - t.start);
-      info.append(a, b);
+      b.textContent = new Date(t.start).toLocaleDateString('en-US', { timeZone: CHI, month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + trackSummary(t);
+      tx.append(a, b);
+      info.append(sw, tx);
+      info.addEventListener('click', () => openTrackDetail(t));
       const show = document.createElement('button');
       show.textContent = trackLines.has(t.id) ? 'Hide' : 'Show';
       show.addEventListener('click', () => {
@@ -2146,17 +2406,7 @@
         }
         renderTrackList();
       });
-      const del = document.createElement('button');
-      del.className = 'danger';
-      del.textContent = 'Delete';
-      del.addEventListener('click', () => {
-        if (!confirm('Delete "' + t.name + '"?')) return;
-        hideTrack(t.id);
-        tracks = tracks.filter((x) => x !== t);
-        saveTracks();
-        renderTrackList();
-      });
-      li.append(info, show, del);
+      li.append(info, show);
       ul.appendChild(li);
     }
   }
@@ -2164,26 +2414,220 @@
     showSheet('trackSheet');
     updateTrackUI();
     renderTrackList();
-    $('trkStatus').textContent = rec
-      ? 'Recording · ' + fmtDist(rec.meters) + ' · ' + fmtDur(Date.now() - rec.start) + ' · ' + rec.pts.length + ' points'
-      : 'Not recording';
+    $('trkStatus').textContent = recStatus();
   }
   $('fabTrack').addEventListener('click', openTrackSheet);
   $('btnTrkToggle').addEventListener('click', () => { if (rec) stopTrack(); else startTrack(); });
+  $('btnTrkPause').addEventListener('click', pauseTrack);
   $('btnTrkClose').addEventListener('click', closeSheets);
+
+  // Walk details: stats, elevation, rename, color, notes, follow back, share, save as a route.
+  let trackEditing = null, trackPicked = '';
+  function renderTrackSwatches() {
+    makeSwatches($('tdColors'), trackPicked, '', (c) => { trackPicked = c; renderTrackSwatches(); });
+  }
+  function fillTrackStats(t) {
+    const st = trackStats(t), e = elevFor(t);
+    const rows = [
+      ['Distance', fmtDist(t.meters)],
+      ['Total time', fmtDur(st.total)],
+      ['Moving time', st.moving ? fmtDur(st.moving) : '—'],
+      ['Average speed', st.mph ? st.mph.toFixed(1) + ' mph (while moving)' : '—'],
+      ['Climb', e ? ftOf(e.gain) : '—'],
+      ['Descent', e ? ftOf(e.loss) : '—'],
+      ['Started', new Date(t.start).toLocaleString('en-US', { timeZone: CHI, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })]
+    ];
+    $('tdStats').replaceChildren(...rows.flatMap(([k, v]) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; return [dt, dd]; }));
+  }
+  function openTrackDetail(t) {
+    trackEditing = t;
+    $('tdName').value = t.name;
+    $('tdNotes').value = t.notes || '';
+    trackPicked = trackColor(t);
+    renderTrackSwatches();
+    fillTrackStats(t);
+    renderElevBox($('tdElev'), t, saveTracks, () => { if (trackEditing === t) fillTrackStats(t); });
+    showSheet('trackDetail');
+  }
+  $('btnTdSave').addEventListener('click', () => {
+    const t = trackEditing;
+    if (!t) return;
+    t.name = $('tdName').value.trim().slice(0, 60) || t.name;
+    t.notes = $('tdNotes').value.trim().slice(0, 500);
+    if (!t.notes) delete t.notes;
+    if (trackPicked && trackPicked !== TRACK_COLOR) t.color = trackPicked; else delete t.color;
+    saveTracks();
+    restyleTrack(t);
+    trackEditing = null;
+    openTrackSheet();
+    toast('Walk saved');
+  });
+  $('btnTdBack').addEventListener('click', () => { trackEditing = null; openTrackSheet(); });
+  $('btnTdFollow').addEventListener('click', () => { const t = trackEditing; trackEditing = null; if (t) startFollow(t, true); });
+  $('btnTdShare').addEventListener('click', () => { if (trackEditing) shareTrack(trackEditing); });
+  $('btnTdRoute').addEventListener('click', () => {
+    const t = trackEditing;
+    if (!t) return;
+    trackEditing = null;
+    // Drop points closer than 5 m apart and keep at most 1500, so the route stays light.
+    let pts = [];
+    for (const p of t.pts) {
+      const q = [+p[0].toFixed(6), +p[1].toFixed(6)];
+      const last = pts[pts.length - 1];
+      if (!last || dist({ lat: last[0], lng: last[1] }, { lat: q[0], lng: q[1] }) >= 5) pts.push(q);
+    }
+    const lastP = t.pts[t.pts.length - 1];
+    if (pts.length < 2) pts.push([lastP[0], lastP[1]]);
+    if (pts.length > 1500) { const step = (pts.length - 1) / 1499; pts = Array.from({ length: 1500 }, (_, i) => pts[Math.round(i * step)]); }
+    openShapeEditor({ kind: 'route', pts, name: t.name.replace(/^Walk/, 'Route'), notes: t.notes || '' }, true);
+  });
+  $('btnTdDelete').addEventListener('click', () => {
+    const t = trackEditing;
+    if (!t || !confirm('Delete "' + t.name + '"?')) return;
+    hideTrack(t.id, true);
+    if (follow && follow.obj === t) stopFollow();
+    tracks = tracks.filter((x) => x !== t);
+    saveTracks();
+    trackEditing = null;
+    openTrackSheet();
+  });
+
   const escXml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+  // GPX for walks; a pause starts a new segment.
+  function tracksGPX(list) {
+    const body = list.map((t) => {
+      const segs = [[]];
+      t.pts.forEach((p) => { if (p[3]) segs.push([]); segs[segs.length - 1].push(p); });
+      return '  <trk>\n    <name>' + escXml(t.name) + '</name>\n' + (t.notes ? '    <desc>' + escXml(t.notes) + '</desc>\n' : '') +
+        segs.map((sg) => '    <trkseg>\n' + sg.map((p) => '      <trkpt lat="' + p[0] + '" lon="' + p[1] + '"><time>' + new Date(p[2] * 1000).toISOString() + '</time></trkpt>').join('\n') + '\n    </trkseg>').join('\n') +
+        '\n  </trk>';
+    }).join('\n');
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Woods Map" xmlns="http://www.topografix.com/GPX/1/1">\n' + body + '\n</gpx>\n';
+  }
+  async function shareTrack(t) {
+    const fname = t.name.replace(/[^\w-]+/g, '_') + '.gpx';
+    const gpx = tracksGPX([t]);
+    const file = new File([gpx], fname, { type: 'application/gpx+xml' });
+    const text = '🥾 ' + t.name + '\n' + trackSummary(t) + (t.notes ? '\n' + t.notes : '') + '\nOpen the attached GPX in Woods Map (More > Import pins), onX, Google Earth or another map app.';
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ title: t.name, text, files: [file] }); return; }
+      catch (err) { if (err && err.name === 'AbortError') return; }
+    }
+    download(fname, gpx, 'application/gpx+xml');
+    toast('Saved ' + fname + '. Send that file to share it.', 4500);
+  }
   $('btnTrkGpx').addEventListener('click', () => {
     const done = tracks.filter((t) => t !== rec && t.pts.length > 1);
     if (!done.length) return toast('No saved walks to export yet');
-    const body = done.map((t) =>
-      '  <trk>\n    <name>' + escXml(t.name) + '</name>\n    <trkseg>\n' +
-      t.pts.map((p) => '      <trkpt lat="' + p[0] + '" lon="' + p[1] + '"><time>' + new Date(p[2] * 1000).toISOString() + '</time></trkpt>').join('\n') +
-      '\n    </trkseg>\n  </trk>').join('\n');
-    download('woods-map-tracks-' + stamp() + '.gpx',
-      '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Woods Map" xmlns="http://www.topografix.com/GPX/1/1">\n' + body + '\n</gpx>\n',
-      'application/gpx+xml');
+    download('woods-map-tracks-' + stamp() + '.gpx', tracksGPX(done), 'application/gpx+xml');
   });
+  // Walks from a Woods Map backup. Skips ones already here (same id or same start time).
+  function importTracks(list) {
+    let n = 0;
+    for (const x of list) {
+      if (!x || !Array.isArray(x.pts) || !isFinite(x.start)) continue;
+      if (tracks.some((t) => t.id === x.id || t.start === x.start)) continue;
+      const pts = x.pts.filter((p) => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]) && isFinite(p[2])).slice(0, 20000)
+        .map((p) => [+p[0], +p[1], +p[2], ...(p[3] ? [1] : [])]);
+      if (pts.length < 2) continue;
+      const t = {
+        id: typeof x.id === 'string' ? x.id.slice(0, 64) : newId(),
+        name: String(x.name || 'Walk').slice(0, 60),
+        start: +x.start,
+        end: isFinite(x.end) ? +x.end : pts[pts.length - 1][2] * 1000,
+        pts,
+        meters: trackMeters(pts),
+        ...(PIN_COLORS.some(([c]) => c === x.color) ? { color: x.color } : {}),
+        ...(x.notes ? { notes: String(x.notes).slice(0, 500) } : {}),
+        ...(x.elev && x.elev.k === elevKey(pts) && Array.isArray(x.elev.prof) ? { elev: x.elev } : {})
+      };
+      tracks.push(t);
+      n++;
+    }
+    if (n) { tracks.sort((a, b) => b.start - a.start); saveTracks(); }
+    return n;
+  }
   updateTrackUI();
+
+  // ---------- Follow a route, line or walk ----------
+  // Shows distance to go along it, time, and which way to head; warns when you're off it and points back.
+  let followGlow = null, followLink = null;
+  function startFollow(obj, reverse) {
+    const path = obj.pts.map((p) => [p[0], p[1]]);
+    if (path.length < 2) return;
+    stopFollow(true);
+    target = null;
+    if (navLine) { map.removeLayer(navLine); navLine = null; }
+    const cum = [0];
+    for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + dist({ lat: path[i - 1][0], lng: path[i - 1][1] }, { lat: path[i][0], lng: path[i][1] }));
+    // Lines and routes: head for whichever end is farther from you.
+    if (reverse === undefined) reverse = !!(me && dist(me, { lat: path[path.length - 1][0], lng: path[path.length - 1][1] }) < dist(me, { lat: path[0][0], lng: path[0][1] }));
+    follow = { obj, path, cum, total: cum[cum.length - 1], reverse, lastS: null, arrived: false };
+    followGlow = L.polyline(path, { color: '#e8b53a', weight: 11, opacity: 0.45, interactive: false }).addTo(map);
+    closeSheets();
+    map.closePopup();
+    if (watchId === null) { centerOnFix = false; startGPS(); }
+    map.fitBounds(followGlow.getBounds().pad(0.15), { maxZoom: 17 });
+    toast('Following "' + obj.name + '" to its ' + (reverse ? 'start' : 'end') + '.', 3500);
+    updateNav();
+  }
+  function stopFollow(quiet) {
+    if (!follow) return;
+    follow = null;
+    if (followGlow) { map.removeLayer(followGlow); followGlow = null; }
+    if (followLink) { map.removeLayer(followLink); followLink = null; }
+    if (!quiet) updateNav();
+  }
+  // Nearest spot on the path to p: { off: meters away, s: meters along the path, lat, lng }.
+  function projectOnPath(f, p) {
+    const k = Math.cos(rad(p.lat)), M = 111320;
+    const X = (q) => (q[1] - p.lng) * k * M, Y = (q) => (q[0] - p.lat) * M;
+    let best = null;
+    for (let i = 1; i < f.path.length; i++) {
+      const ax = X(f.path[i - 1]), ay = Y(f.path[i - 1]), dx = X(f.path[i]) - ax, dy = Y(f.path[i]) - ay;
+      const l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+      const px = ax + t * dx, py = ay + t * dy;
+      const c = { off: Math.hypot(px, py), s: f.cum[i - 1] + t * (f.cum[i] - f.cum[i - 1]), lat: p.lat + py / M, lng: p.lng + px / (k * M) };
+      if (!best) best = c;
+      // Where the path doubles back near itself, stay on the stretch you were already on.
+      else if (f.lastS !== null && Math.abs(c.off - best.off) < 20) { if (Math.abs(c.s - f.lastS) < Math.abs(best.s - f.lastS)) best = c; }
+      else if (c.off < best.off) best = c;
+    }
+    return best;
+  }
+  function pointAt(f, s) {
+    s = Math.max(0, Math.min(f.total, s));
+    let i = 1;
+    while (i < f.cum.length - 1 && f.cum[i] < s) i++;
+    const seg = f.cum[i] - f.cum[i - 1], t = seg ? (s - f.cum[i - 1]) / seg : 0;
+    const a = f.path[i - 1], b = f.path[i];
+    return { lat: a[0] + (b[0] - a[0]) * t, lng: a[1] + (b[1] - a[1]) * t };
+  }
+  function updateFollow() {
+    $('navinfo').hidden = false;
+    const name = follow.obj.name || 'Route';
+    if (!me) { $('navtext').textContent = name + ': waiting for GPS…'; return; }
+    const pr = projectOnPath(follow, me);
+    follow.lastS = pr.s;
+    const toGo = follow.reverse ? pr.s : follow.total - pr.s;
+    const off = pr.off > 35;
+    const end = follow.reverse ? 'start' : 'end';
+    if (toGo < 20 && !off) {
+      $('navtext').textContent = name + ' · you\'re at the ' + end;
+      if (!follow.arrived) { follow.arrived = true; toast('You made it to the ' + end + ' of "' + name + '".', 5000); }
+    } else {
+      const aim = off ? pr : pointAt(follow, pr.s + (follow.reverse ? -30 : 30));
+      const br = bearing(me, aim);
+      $('navtext').textContent = name + ' · ' + fmtDist(toGo) + ' to go · about ' + fmtTime(walkMin(toGo)) +
+        (off ? ' · off route ' + fmtDist(pr.off) + ', go ' : ' · head ') + compass(br) + ' ' + Math.round(br) + '°';
+    }
+    const link = [[me.lat, me.lng], [pr.lat, pr.lng]];
+    if (off) {
+      if (!followLink) followLink = L.polyline(link, { color: '#e8b53a', weight: 4, dashArray: '8 8', interactive: false }).addTo(map);
+      else followLink.setLatLngs(link);
+    } else if (followLink) { map.removeLayer(followLink); followLink = null; }
+  }
 
   // ---------- Back to truck ----------
   let pendingTruck = false;
