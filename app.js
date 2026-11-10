@@ -77,16 +77,42 @@
       '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&layers=show:0&f=image';
   }
 
+  // Pin types, grouped by section in the editor's Type list. Keys are saved with each pin, so never rename one.
   const CATS = {
-    stand: { label: 'Stand / blind', short: 'Stand', icon: '🦌', color: '#b5651d' },
-    cam: { label: 'Trail camera', short: 'Cam', icon: '📷', color: '#455a64' },
-    harvest: { label: 'Harvest', short: 'Harvest', icon: '🎯', color: '#ad1457' },
-    sign: { label: 'Sign (tracks, rub, scrape)', short: 'Sign', icon: '🐾', color: '#6a1b9a' },
-    camp: { label: 'Camp', short: 'Camp', icon: '⛺', color: '#2e7d32' },
-    truck: { label: 'Parking / truck', short: 'Truck', icon: '🛻', color: '#1565c0' },
-    water: { label: 'Water', short: 'Water', icon: '💧', color: '#0277bd' },
-    other: { label: 'Other', short: 'Pin', icon: '📍', color: '#c62828' }
+    stand: { sec: 'Stands & hunting', label: 'Tree stand', short: 'Stand', icon: '🪜', color: '#b5651d' },
+    blind: { sec: 'Stands & hunting', label: 'Ground blind', short: 'Blind', icon: '🛖', color: '#8d6e63' },
+    glass: { sec: 'Stands & hunting', label: 'Glassing spot', short: 'Glass', icon: '🔭', color: '#5d4037' },
+    cam: { sec: 'Stands & hunting', label: 'Trail camera', short: 'Cam', icon: '📷', color: '#455a64' },
+    harvest: { sec: 'Stands & hunting', label: 'Harvest', short: 'Harvest', icon: '🎯', color: '#ad1457' },
+    buck: { sec: 'Deer sign', label: 'Buck sighting', short: 'Buck', icon: '🦌', color: '#6d4c41' },
+    doe: { sec: 'Deer sign', label: 'Doe / deer sighting', short: 'Deer', icon: '👀', color: '#8e6c4a' },
+    scrape: { sec: 'Deer sign', label: 'Scrape', short: 'Scrape', icon: '🍂', color: '#bf360c' },
+    rub: { sec: 'Deer sign', label: 'Rub', short: 'Rub', icon: '🌲', color: '#33691e' },
+    bed: { sec: 'Deer sign', label: 'Bedding area', short: 'Bed', icon: '🛏️', color: '#7b1fa2' },
+    trail: { sec: 'Deer sign', label: 'Deer trail', short: 'Trail', icon: '👣', color: '#795548' },
+    funnel: { sec: 'Deer sign', label: 'Funnel / crossing', short: 'Funnel', icon: '⏳', color: '#4e342e' },
+    shed: { sec: 'Deer sign', label: 'Shed antler', short: 'Shed', icon: '🦴', color: '#9e9d24' },
+    sign: { sec: 'Deer sign', label: 'Other sign (tracks, droppings)', short: 'Sign', icon: '🐾', color: '#6a1b9a' },
+    food: { sec: 'Food & water', label: 'Food plot / field', short: 'Food', icon: '🌱', color: '#558b2f' },
+    mast: { sec: 'Food & water', label: 'Acorns / mast tree', short: 'Mast', icon: '🌰', color: '#a1662f' },
+    water: { sec: 'Food & water', label: 'Water', short: 'Water', icon: '💧', color: '#0277bd' },
+    turkey: { sec: 'Other game', label: 'Turkey / roost', short: 'Turkey', icon: '🦃', color: '#c2185b' },
+    duck: { sec: 'Other game', label: 'Ducks / geese', short: 'Ducks', icon: '🦆', color: '#00796b' },
+    game: { sec: 'Other game', label: 'Other game', short: 'Game', icon: '🐇', color: '#827717' },
+    truck: { sec: 'Access & camp', label: 'Parking / truck', short: 'Truck', icon: '🛻', color: '#1565c0' },
+    gate: { sec: 'Access & camp', label: 'Gate', short: 'Gate', icon: '🚧', color: '#f57f17' },
+    entry: { sec: 'Access & camp', label: 'Entry / exit route', short: 'Entry', icon: '🚶', color: '#283593' },
+    camp: { sec: 'Access & camp', label: 'Camp', short: 'Camp', icon: '⛺', color: '#2e7d32' },
+    corner: { sec: 'Access & camp', label: 'Property line / corner', short: 'Corner', icon: '🚩', color: '#d32f2f' },
+    hazard: { sec: 'Access & camp', label: 'Hazard', short: 'Hazard', icon: '⚠️', color: '#e65100' },
+    other: { sec: 'Access & camp', label: 'Other', short: 'Pin', icon: '📍', color: '#c62828' }
   };
+  // Pin colors (like onX): a pin can use its type's color or one of these. Sort spots by year, hunter, or anything.
+  const PIN_COLORS = [
+    ['#c62828', 'Red'], ['#ef6c00', 'Orange'], ['#f9a825', 'Yellow'], ['#2e7d32', 'Green'], ['#00897b', 'Teal'],
+    ['#1565c0', 'Blue'], ['#6a1b9a', 'Purple'], ['#d81b60', 'Pink'], ['#6d4c41', 'Brown'], ['#212121', 'Black'], ['#eeeeee', 'White']
+  ];
+  const pinColor = (p) => (PIN_COLORS.some(([c]) => c === p.color) ? p.color : (CATS[p.cat] || CATS.other).color);
 
   // ---------- Helpers ----------
   const $ = (id) => document.getElementById(id);
@@ -326,17 +352,38 @@
 
   const catSel = $('pinCat');
   for (const [k, c] of Object.entries(CATS)) {
+    let og = [...catSel.children].find((g) => g.label === c.sec);
+    if (!og) { og = document.createElement('optgroup'); og.label = c.sec; catSel.appendChild(og); }
     const o = document.createElement('option');
     o.value = k;
     o.textContent = c.icon + '  ' + c.label;
-    catSel.appendChild(o);
+    og.appendChild(o);
   }
 
-  function pinIcon(cat) {
-    const c = CATS[cat] || CATS.other;
+  // Color swatches in the editor. The first one ("Auto") uses the pin type's color.
+  let pickedColor = '';
+  function renderSwatches() {
+    const box = $('pinColors');
+    box.replaceChildren();
+    const auto = (CATS[$('pinCat').value] || CATS.other).color;
+    for (const [c, name] of [['', 'Type color'], ...PIN_COLORS]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch' + (c ? '' : ' auto');
+      b.style.setProperty('--c', c || auto);
+      b.title = name;
+      b.setAttribute('aria-label', name);
+      b.setAttribute('aria-pressed', String(c === pickedColor));
+      b.addEventListener('click', () => { pickedColor = c; renderSwatches(); });
+      box.appendChild(b);
+    }
+  }
+
+  function pinIcon(p) {
+    const c = CATS[p.cat] || CATS.other;
     return L.divIcon({
       className: '',
-      html: '<div class="pin" style="--c:' + c.color + '"><span>' + c.icon + '</span></div>',
+      html: '<div class="pin" style="--c:' + pinColor(p) + '"><span>' + c.icon + '</span></div>',
       iconSize: [36, 36],
       iconAnchor: [18, 43],
       popupAnchor: [0, -40]
@@ -365,6 +412,15 @@
       n.textContent = p.notes;
       div.appendChild(n);
     }
+    if (p.photo) {
+      const img = document.createElement('img');
+      img.className = 'pp-photo';
+      img.alt = 'Photo of ' + (p.name || 'this pin');
+      img.addEventListener('click', () => showPhoto(p));
+      img.addEventListener('load', () => { const m = markers.get(p.id); if (m && m.getPopup()) m.getPopup().update(); }, { once: true });
+      photoURL(p.id).then((u) => { if (u) img.src = u; else img.remove(); });
+      div.appendChild(img);
+    }
     const actions = document.createElement('div');
     actions.className = 'pp-actions';
     const go = document.createElement('button');
@@ -378,7 +434,11 @@
     hide.className = 'alt';
     hide.textContent = 'Hide';
     hide.addEventListener('click', () => { map.closePopup(); setPinHidden(p, true); toast('"' + p.name + '" hidden. It stays in the Pins list, where a tap shows it again.', 4500); });
-    actions.append(go, ed, hide);
+    const share = document.createElement('button');
+    share.className = 'alt';
+    share.textContent = 'Share';
+    share.addEventListener('click', () => sharePin(p));
+    actions.append(go, ed, share, hide);
     div.appendChild(actions);
     return div;
   }
@@ -404,7 +464,7 @@
     const old = rings.get(p.id);
     if (old) { map.removeLayer(old); rings.delete(p.id); }
     if (!(p.ring > 0)) return;
-    const c = (CATS[p.cat] || CATS.other).color;
+    const c = pinColor(p);
     rings.set(p.id, L.circle([p.lat, p.lng], {
       radius: p.ring * YD, color: c, weight: 2, dashArray: '6 6', fillColor: c, fillOpacity: 0.07, interactive: false
     }));
@@ -419,7 +479,7 @@
   }
 
   function addMarker(p) {
-    const m = L.marker([p.lat, p.lng], { icon: pinIcon(p.cat), title: p.name });
+    const m = L.marker([p.lat, p.lng], { icon: pinIcon(p), title: p.name });
     m.bindPopup(() => popupFor(p));
     markers.set(p.id, m);
     drawRing(p);
@@ -428,7 +488,7 @@
   function refreshMarker(p) {
     const m = markers.get(p.id);
     if (!m) return addMarker(p);
-    m.setIcon(pinIcon(p.cat));
+    m.setIcon(pinIcon(p));
     m.setLatLng([p.lat, p.lng]);
     drawRing(p);
     syncVisibility(p);
@@ -453,6 +513,10 @@
     $('groupNames').replaceChildren(...groupNames().map((g) => { const o = document.createElement('option'); o.value = g; return o; }));
     $('pinDate').value = p.date || '';
     syncDateField(isNew);
+    pickedColor = PIN_COLORS.some(([c]) => c === p.color) ? p.color : '';
+    renderSwatches();
+    photoEdit = { blob: null, removed: false };
+    showEditorPhoto(p.photo && !isNew ? photoURL(p.id) : null);
     $('pinCoords').textContent = p.lat.toFixed(5) + ', ' + p.lng.toFixed(5);
     $('btnPinDelete').hidden = isNew;
     showSheet('editor');
@@ -469,7 +533,13 @@
     p.group = cleanGroup($('pinGroup').value);
     if ($('pinHide').checked) p.hidden = true; else delete p.hidden;
     p.date = (p.cat === 'cam' || p.cat === 'harvest') ? $('pinDate').value : '';
+    if (pickedColor) p.color = pickedColor; else delete p.color;
     if (isNew) { p.id = newId(); p.created = Date.now(); pins.push(p); }
+    if (photoEdit.blob || photoEdit.removed) forgetPhotoURL(p.id);
+    if (photoEdit.blob) {
+      p.photo = true;
+      savePhoto(p.id, photoEdit.blob).catch(() => { delete p.photo; store(STORE.pins, pins); toast('The photo could not be saved. Phone storage may be full.', 5000); });
+    } else if (photoEdit.removed) { delete p.photo; deletePhoto(p.id); }
     store(STORE.pins, pins);
     refreshMarker(p);
     if (target && target.id === p.id) { target = p; updateNav(); }
@@ -488,6 +558,8 @@
     pins = pins.filter((x) => x.id !== id);
     store(STORE.pins, pins);
     removeMarker(id);
+    deletePhoto(id);
+    forgetPhotoURL(id);
     if (target && target.id === id) setTarget(null);
     closeSheets();
     editing = null;
@@ -527,11 +599,172 @@
     openEditor({ lat: e.latlng.lat, lng: e.latlng.lng, cat: 'stand', name: '', notes: '' }, true);
   });
 
+  // ---------- Pin photos ----------
+  // Photos are too big for localStorage, so they live in IndexedDB, one per pin, keyed by pin id.
+  // A pin with a photo has p.photo = true. Photos are shrunk to about 1600 px so they stay small.
+  let photoDB = null;
+  function db() {
+    if (!photoDB) photoDB = new Promise((resolve, reject) => {
+      const req = indexedDB.open('woodsmap', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('photos');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return photoDB;
+  }
+  async function photoTx(mode, fn) {
+    const d = await db();
+    return new Promise((resolve, reject) => {
+      const tx = d.transaction('photos', mode);
+      const r = fn(tx.objectStore('photos'));
+      tx.oncomplete = () => resolve(r && r.result);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  }
+  const savePhoto = (id, blob) => photoTx('readwrite', (st) => st.put(blob, id));
+  const getPhoto = (id) => photoTx('readonly', (st) => st.get(id)).catch(() => null);
+  const deletePhoto = (id) => photoTx('readwrite', (st) => st.delete(id)).catch(() => {});
+  const photoURLs = new Map(); // pin id -> object URL, reused so popups don't leak memory
+  async function photoURL(id) {
+    if (photoURLs.has(id)) return photoURLs.get(id);
+    const b = await getPhoto(id);
+    if (!b) return null;
+    const u = URL.createObjectURL(b);
+    photoURLs.set(id, u);
+    return u;
+  }
+  function forgetPhotoURL(id) {
+    const u = photoURLs.get(id);
+    if (u) { URL.revokeObjectURL(u); photoURLs.delete(id); }
+  }
+  async function shrinkPhoto(file, max = 1600) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await loadImg(url);
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.naturalWidth * k);
+      cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      return await new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('no blob'))), 'image/jpeg', 0.8));
+    } finally { URL.revokeObjectURL(url); }
+  }
+  // Editor: the photo being added or removed, applied when Save is tapped.
+  let photoEdit = { blob: null, removed: false };
+  let editorPreviewURL = null;
+  function showEditorPhoto(urlPromise) {
+    if (editorPreviewURL) { URL.revokeObjectURL(editorPreviewURL); editorPreviewURL = null; }
+    const img = $('pinPhotoPrev');
+    img.hidden = true;
+    img.removeAttribute('src');
+    $('btnPhotoRemove').hidden = true;
+    $('btnPhotoAdd').textContent = '📷 Add photo';
+    if (!urlPromise) return;
+    urlPromise.then((u) => {
+      if (!u) return;
+      img.src = u;
+      img.hidden = false;
+      $('btnPhotoRemove').hidden = false;
+      $('btnPhotoAdd').textContent = '📷 Change photo';
+    });
+  }
+  $('btnPhotoAdd').addEventListener('click', () => $('pinPhotoFile').click());
+  $('pinPhotoFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      photoEdit = { blob: await shrinkPhoto(file), removed: false };
+      const u = URL.createObjectURL(photoEdit.blob);
+      showEditorPhoto(Promise.resolve(u));
+      editorPreviewURL = u;
+    } catch (err) { toast('That photo could not be opened.'); }
+  });
+  $('btnPhotoRemove').addEventListener('click', () => {
+    photoEdit = { blob: null, removed: true };
+    showEditorPhoto(null);
+  });
+  // Full-screen photo. Tap anywhere to close.
+  async function showPhoto(p) {
+    const u = await photoURL(p.id);
+    if (!u) return;
+    $('photoViewImg').src = u;
+    $('photoViewCap').textContent = p.name || '';
+    $('photoView').hidden = false;
+  }
+  $('photoView').addEventListener('click', () => { $('photoView').hidden = true; });
+
+  // ---------- Share one pin ----------
+  // The link opens Woods Map (or any browser) with the pin ready to save; #wp=lat,lng&n=name&t=type...
+  // It's in the # part so it never reaches a server and works with the offline app.
+  function pinLink(p) {
+    const q = new URLSearchParams({ wp: p.lat.toFixed(6) + ',' + p.lng.toFixed(6), n: p.name || '', t: p.cat });
+    if (p.color) q.set('c', p.color.slice(1));
+    if (p.ring) q.set('r', String(p.ring));
+    if (p.notes) q.set('d', p.notes.slice(0, 300));
+    return location.origin + location.pathname + '#' + q.toString().replace('%2C', ','); // keep the comma in lat,lng readable
+  }
+  async function sharePin(p) {
+    const c = CATS[p.cat] || CATS.other;
+    const ll = p.lat.toFixed(5) + ', ' + p.lng.toFixed(5);
+    const link = pinLink(p);
+    const text = c.icon + ' ' + (p.name || 'Pin') + ' (' + c.label + ')\n' + ll +
+      (p.notes ? '\n' + p.notes : '') +
+      '\nGoogle Maps: https://www.google.com/maps/search/?api=1&query=' + p.lat.toFixed(6) + ',' + p.lng.toFixed(6) +
+      '\nOpen in Woods Map:';
+    const data = { title: p.name || 'Pin', text, url: link };
+    if (p.photo && navigator.canShare) {
+      const b = await getPhoto(p.id);
+      if (b) {
+        const f = new File([b], (p.name || 'pin').replace(/[^\w-]+/g, '_') + '.jpg', { type: 'image/jpeg' });
+        if (navigator.canShare({ ...data, files: [f] })) data.files = [f];
+      }
+    }
+    if (navigator.share) {
+      try { await navigator.share(data); return; }
+      catch (err) { if (err && err.name === 'AbortError') return; delete data.files; try { await navigator.share(data); return; } catch (e2) { if (e2 && e2.name === 'AbortError') return; } }
+    }
+    try {
+      await navigator.clipboard.writeText(text + ' ' + link);
+      toast('Pin copied. Paste it into a text or email.', 4000);
+    } catch (e) {
+      prompt('Copy this and send it:', text + ' ' + link);
+    }
+  }
+  // Opening a shared link: show the spot and open the editor so the pin can be saved.
+  function openSharedLink() {
+    if (!/^#wp=/.test(location.hash)) return;
+    const q = new URLSearchParams(location.hash.slice(1));
+    history.replaceState(null, '', location.pathname + location.search);
+    const [lat, lng] = (q.get('wp') || '').split(',').map(Number);
+    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return toast('That shared pin link is not complete.');
+    const color = '#' + (q.get('c') || '');
+    const ring = +q.get('r');
+    const p = {
+      lat, lng,
+      name: (q.get('n') || '').slice(0, 60),
+      notes: (q.get('d') || '').slice(0, 500),
+      cat: CATS[q.get('t')] ? q.get('t') : 'other',
+      group: 'Shared with me',
+      ...(PIN_COLORS.some(([c]) => c === color) ? { color } : {}),
+      ...([30, 50, 100, 150, 200].includes(ring) ? { ring } : {})
+    };
+    const dup = pins.find((x) => Math.abs(x.lat - lat) < 1e-5 && Math.abs(x.lng - lng) < 1e-5);
+    if (MN.contains([lat, lng])) map.setView([lat, lng], Math.max(map.getZoom(), 16));
+    if (dup) {
+      const m = markers.get(dup.id);
+      if (m && isShown(dup)) setTimeout(() => m.openPopup(), 300);
+      return toast('You already have this pin: "' + dup.name + '"', 4500);
+    }
+    openEditor(p, true);
+    toast('Shared pin. Tap Save to keep it.', 4500);
+  }
+
   // ---------- Pin list ----------
   function renderList() {
     const q = $('pinSearch').value.trim().toLowerCase();
     const shown = pins.filter(inFilter); // pins hidden one by one stay in the list, greyed out
-    const items = shown.filter((p) => !q || ((p.name || '') + ' ' + (p.notes || '') + ' ' + groupOf(p)).toLowerCase().includes(q));
+    const items = shown.filter((p) => !q || ((p.name || '') + ' ' + (p.notes || '') + ' ' + groupOf(p) + ' ' + (CATS[p.cat] || CATS.other).label).toLowerCase().includes(q));
     if (me) items.sort((a, b) => dist(me, a) - dist(me, b));
     else items.sort((a, b) => b.created - a.created);
     const ul = $('pinList');
@@ -550,6 +783,7 @@
       b.className = 'rowmain';
       const ic = document.createElement('span');
       ic.className = 'pi';
+      ic.style.setProperty('--c', pinColor(p));
       ic.textContent = c.icon;
       const txt = document.createElement('span');
       const t = document.createElement('span');
@@ -560,7 +794,7 @@
       const outside = !MN.contains([p.lat, p.lng]);
       const g = groupOf(p);
       if (p.hidden) li.classList.add('off');
-      s.textContent = [p.hidden ? 'hidden' : '', c.label, g !== DEFAULT_GROUP ? g : '', ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
+      s.textContent = [p.hidden ? 'hidden' : '', c.label, p.photo ? '📷 photo' : '', g !== DEFAULT_GROUP ? g : '', ageText(p), outside ? 'outside the map' : '', me ? fmtDist(dist(me, p)) + ' ' + compass(bearing(me, p)) : ''].filter(Boolean).join(' · ');
       txt.append(t, s);
       b.append(ic, txt);
       b.addEventListener('click', () => {
@@ -955,9 +1189,16 @@
   }
   const stamp = () => new Date().toISOString().slice(0, 10);
 
-  $('btnExportJson').addEventListener('click', () => {
+  const blobToDataURL = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
+  $('btnExportJson').addEventListener('click', async () => {
     if (!pins.length) return toast('No pins to export yet');
-    download('woods-map-pins-' + stamp() + '.json', JSON.stringify({ app: 'woods-map', pins }, null, 2), 'application/json');
+    // Photos go in the backup too (as text), so a restore or a friend gets them.
+    const out = [];
+    for (const p of pins) {
+      const b = p.photo ? await getPhoto(p.id) : null;
+      out.push(b ? { ...p, photoData: await blobToDataURL(b) } : p);
+    }
+    download('woods-map-pins-' + stamp() + '.json', JSON.stringify({ app: 'woods-map', pins: out }, null, 2), 'application/json');
   });
 
   function toGPX() {
@@ -986,10 +1227,19 @@
       let incoming = [];
       if (text.startsWith('<')) {
         const doc = new DOMParser().parseFromString(text, 'text/xml');
-        incoming = Array.from(doc.getElementsByTagName('wpt')).map((w) => {
-          const txt = (tag) => { const el = w.getElementsByTagName(tag)[0]; return el ? el.textContent : ''; };
-          return { lat: parseFloat(w.getAttribute('lat')), lng: parseFloat(w.getAttribute('lon')), name: txt('name'), notes: txt('desc'), cat: txt('type') };
-        });
+        const txtIn = (node, tag) => { const el = node.getElementsByTagName(tag)[0]; return el ? el.textContent.trim() : ''; };
+        // GPX waypoints
+        incoming = Array.from(doc.getElementsByTagName('wpt')).map((w) => (
+          { lat: parseFloat(w.getAttribute('lat')), lng: parseFloat(w.getAttribute('lon')), name: txtIn(w, 'name'), notes: txtIn(w, 'desc') || txtIn(w, 'cmt'), cat: txtIn(w, 'type') }
+        ));
+        // KML placemarks with a point (Google Earth, onX and other map apps export these). KML is "lng,lat,alt".
+        for (const pm of Array.from(doc.getElementsByTagName('Placemark'))) {
+          const pt = pm.getElementsByTagName('Point')[0];
+          if (!pt) continue;
+          const [lng, lat] = txtIn(pt, 'coordinates').split(',').map(parseFloat);
+          const desc = txtIn(pm, 'description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+          incoming.push({ lat, lng, name: txtIn(pm, 'name'), notes: desc });
+        }
       } else {
         const data = JSON.parse(text);
         incoming = Array.isArray(data) ? data : (data.pins || []);
@@ -1017,10 +1267,14 @@
           ring: [30, 50, 100, 150, 200].includes(+p.ring) ? +p.ring : 0,
           date: /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : '',
           cat: CATS[p.cat] ? p.cat : 'other',
+          ...(PIN_COLORS.some(([c]) => c === p.color) ? { color: p.color } : {}),
           group: intoGroup || cleanGroup(p.group),
           ...(!intoGroup && p.hidden ? { hidden: true } : {}), // keep hidden pins hidden when restoring a backup
           created: p.created || Date.now()
         };
+        if (typeof p.photoData === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(p.photoData)) {
+          try { await savePhoto(np.id, await (await fetch(p.photoData)).blob()); np.photo = true; } catch (e) { /* skip the photo, keep the pin */ }
+        }
         pins.push(np);
         addMarker(np);
         added++;
@@ -1060,7 +1314,7 @@
     $('pinDateLabel').textContent = cat === 'harvest' ? 'Harvest date' : 'Last checked';
     if (show && prefill && !$('pinDate').value) $('pinDate').value = chiDate();
   }
-  $('pinCat').addEventListener('change', () => syncDateField(editing ? editing.isNew : false));
+  $('pinCat').addEventListener('change', () => { syncDateField(editing ? editing.isNew : false); renderSwatches(); });
 
   // Range ring choices
   for (const [v, label] of [[0, 'None'], [30, '30 yards (bow)'], [50, '50 yards'], [100, '100 yards'], [150, '150 yards'], [200, '200 yards']]) {
@@ -1600,7 +1854,10 @@
   function renderShowBox() {
     const chips = $('typeChips');
     chips.replaceChildren();
-    for (const [k, c] of Object.entries(CATS)) {
+    // Only the types you've used (or hidden), so the list stays short.
+    const used = Object.entries(CATS).filter(([k]) => hiddenTypes.has(k) || pins.some((p) => (CATS[p.cat] ? p.cat : 'other') === k));
+    if (!used.length) chips.textContent = 'No pins yet.';
+    for (const [k, c] of used) {
       const b = document.createElement('button');
       b.textContent = c.icon + ' ' + c.short;
       b.title = c.label;
@@ -1689,6 +1946,9 @@
       setTimeout(() => toast('New here? Tap More, then "How to use this app".', 7000), 1200);
     }
   } catch (e) { /* storage unavailable: skip the hint */ }
+
+  openSharedLink();
+  window.addEventListener('hashchange', openSharedLink);
 
   // ---------- Service worker ----------
   if ('serviceWorker' in navigator) {

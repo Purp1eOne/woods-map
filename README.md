@@ -5,7 +5,8 @@ A simple hunting map for Minnesota and Illinois that installs on an Android phon
 - USGS topo (contour lines), USGS satellite, Satellite + trails (clear satellite with the topo map's trails in orange), Hybrid (satellite with the topo map's trails, roads, names and contours; public land is shaded pale), and street map
 - Live GPS dot
 - Drop pins at your location, the map center, or by long-pressing the map
-- Pin types: stand, camp, truck, sign, water, other, plus notes
+- Waypoints like onX: about 25 pin types (tree stand, ground blind, glassing spot, scrape, rub, bedding, deer trail, funnel, buck sighting, shed, food plot, mast, water, turkey, ducks, gate, entry route, property corner, hazard and more), 11 pin colors, a photo on any pin, and notes
+- Share a single pin (with its photo) by text, email or any app. The message has a Google Maps link and a Woods Map link that opens the pin ready to save
 - "Go there" shows distance and compass direction to any pin
 - Walking time: "Go there" shows distance, estimated time and direction. Pins > Measure works out distance and time between any two points (pins, your location, or the map center). Set your pace under More. These are straight-line estimates; real routes take longer
 - Sun chip at the top (tap it): sunrise and sunset for your location, plus the Minnesota or Illinois deer/big-game shooting hours depending on where you are (30 min before sunrise to 30 min after sunset). Works with no signal. Other seasons differ, so check the current DNR regulations
@@ -18,7 +19,7 @@ A simple hunting map for Minnesota and Illinois that installs on an Android phon
 - Pins list has an Edit button on every pin, so you can change or delete any pin even if it isn't on screen
 - Insights (bottom bar): Minnesota whitetail rut calendar (pre-rut, seeking, chasing, peak, post-rut) for any date, with what deer are doing and where to hunt. The Nov 10–16 peak is based on MN DNR breeding research; the other phases are estimates. Below it, your Minnesota deer permit area (found by GPS) with its archery, firearms and muzzleloader dates from the DNR's permit-area data, whether each is open, and which rut phases it covers
 - Offline maps (under More): save the areas you hunt (topo, satellite, satellite + trails or hybrid) for no-cell-service use
-- Export/import pins (JSON backup or GPX) to back up or share with friends
+- Export/import pins to back up or share with friends. The JSON backup includes colors and photos. GPX export, and GPX or KML import (Google Earth, onX and other map apps)
 - MN DNR public land overlays: Wildlife Management Areas and walk-in access sites (SW Minnesota), both off by default. Switch them on/off from the layers button at the top right
 - Covers Minnesota and Illinois. Illinois has the topo, satellite and street maps, but the DNR public-land overlays are Minnesota only
 
