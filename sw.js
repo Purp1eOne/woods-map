@@ -1,5 +1,5 @@
 /* Woods Map service worker: app shell works offline, USGS map tiles are cached. */
-const SHELL = 'woods-shell-v20';
+const SHELL = 'woods-shell-v21';
 const TILES = 'woods-tiles-v1';
 const SHELL_FILES = [
   './',
@@ -35,8 +35,10 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // USGS tiles (topo, satellite, hybrid) and DNR overlays: cache first, then network (and remember what you looked at).
-  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us') {
+  // USGS tiles (topo, satellite, hybrid), DNR overlays and parcel-line images: cache first, then network (and remember what you looked at).
+  // Only the parcel images are cached from MnGeo; its lookups (owners, deer seasons) must stay fresh.
+  const parcelImg = url.hostname === 'enterprise.gisdata.mn.gov' && url.pathname.endsWith('/plan_parcels_open/MapServer/export');
+  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us' || parcelImg) {
     e.respondWith(
       caches.open(TILES).then(async (cache) => {
         const hit = await cache.match(req, { ignoreVary: true });

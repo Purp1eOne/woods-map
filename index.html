@@ -169,7 +169,7 @@
       <p>Open the app on wifi and allow location when it asks. Tap <b>Locate</b> at the bottom left. The blue dot is you. The pale circle around it shows how accurate the GPS is. It is smaller in the open than in thick woods.</p>
 
       <h3>Maps and layers</h3>
-      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b>, <b>Satellite + trails</b>, <b>Hybrid</b> or <b>Street</b>. <b>Satellite + trails</b> is the clear satellite photo with the Topo map's trails drawn in orange. <b>Hybrid</b> adds road and trail names and faint contour lines, but it shades public land such as wildlife refuges a pale white. Both have the same trails as Topo, not every path in the woods. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo, Satellite, Satellite + trails and Hybrid can be saved for use offline. Satellite + trails takes about twice the space, since it saves two sets of images.</p>
+      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b>, <b>Satellite + trails</b>, <b>Hybrid</b> or <b>Street</b>. <b>Satellite + trails</b> is the clear satellite photo with the Topo map's trails drawn in orange. <b>Hybrid</b> adds road and trail names and faint contour lines, but it shades public land such as wildlife refuges a pale white. Both have the same trails as Topo, not every path in the woods. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. <b>Parcel lines (Becker, Otter Tail)</b> draws property lines in yellow once you zoom in close. Tap inside a parcel to see the owner, acres and legal description from county tax records. Parcel lines are approximate and are not a survey. The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo, Satellite, Satellite + trails and Hybrid can be saved for use offline. Satellite + trails takes about twice the space, since it saves two sets of images.</p>
 
       <h3>Adding pins</h3>
       <ul>
@@ -362,7 +362,7 @@
         <option value="16">Best (zoom 16, large)</option>
       </select>
     </label>
-    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save Minnesota DNR public-land layers (WMAs, walk-in access)</label>
+    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save Minnesota public-land and parcel layers (WMAs, walk-in access, Becker &amp; Otter Tail parcels)</label>
     <div id="offEstimate" class="estimate"></div>
     <progress id="offProgress" value="0" max="1" hidden></progress>
     <div id="offStatus" class="muted"></div>
@@ -400,7 +400,7 @@
       <button id="btnImport">Import pins</button>
       <input id="importFile" type="file" accept=".json,.gpx,.kml,application/json,application/gpx+xml,application/vnd.google-earth.kml+xml,text/xml" hidden>
     </div>
-    <p class="muted small" id="aboutText">Maps: USGS The National Map, OpenStreetMap contributors. Public land layers: Minnesota DNR (Minnesota only). Boundaries are for reference only; always confirm access rules and land ownership before you hunt.</p>
+    <p class="muted small" id="aboutText">Maps: USGS The National Map, OpenStreetMap contributors. Public land layers: Minnesota DNR (Minnesota only). Parcels: MnGeo open parcels, from Becker and Otter Tail counties. Boundaries are for reference only; always confirm access rules and land ownership before you hunt.</p>
   </section>
 
   <div id="photoView" hidden><img id="photoViewImg" alt=""><div id="photoViewCap"></div></div>

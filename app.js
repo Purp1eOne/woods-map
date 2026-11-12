@@ -48,6 +48,8 @@
     }
   };
 
+  const PARCEL_URL = 'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_mngeo/plan_parcels_open/MapServer';
+  const PARCEL_WHERE = "co_name IN ('Becker','Otter Tail')";
   // MN DNR public land overlays. These are dynamic ArcGIS map services (not pre-cut tiles),
   // so each 256px tile is requested as a small transparent image for one web-mercator box.
   const OVERLAYS = {
@@ -62,19 +64,35 @@
       url: 'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_walk_in_access_sites/MapServer',
       box: MN_BOX,
       opacity: 0.7
+    },
+    // Parcel lines from MnGeo's open parcels service (counties that publish their parcels openly),
+    // limited to Becker and Otter Tail and drawn as yellow outlines with no fill.
+    parcels: {
+      name: 'Parcel lines (Becker, Otter Tail)',
+      url: PARCEL_URL,
+      box: L.latLngBounds([46.08, -96.34], [47.18, -95.12]),
+      opacity: 1,
+      minZoom: 13,
+      attr: 'Parcels: MnGeo, Becker & Otter Tail counties',
+      params: '&dynamicLayers=' + encodeURIComponent(JSON.stringify([{
+        id: 0,
+        source: { type: 'mapLayer', mapLayerId: 0 },
+        definitionExpression: PARCEL_WHERE,
+        drawingInfo: { renderer: { type: 'simple', symbol: { type: 'esriSFS', style: 'esriSFSNull', outline: { type: 'esriSLS', style: 'esriSLSSolid', color: [255, 214, 0, 255], width: 1.5 } } } }
+      }]))
     }
   };
   const OVERLAY_MAX_SAVE_ZOOM = 15; // keep load on the state server reasonable
   const OVERLAY_AVG_KB = 3;
   const MERC = 20037508.342789244;
-  function overlayTileUrl(base, z, x, y) {
+  function overlayTileUrl(o, z, x, y) {
     const res = (MERC * 2) / Math.pow(2, z);
     const x0 = -MERC + x * res;
     const y1 = MERC - y * res;
     const f = (n) => n.toFixed(3);
     // layers=show:0 is required: the WMA layer is switched off by default on the server.
-    return base + '/export?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
-      '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&layers=show:0&f=image';
+    return o.url + '/export?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
+      '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true' + (o.params || '&layers=show:0') + '&f=image';
   }
 
   // Pin types, grouped by section in the editor's Type list. Keys are saved with each pin, so never rename one.
@@ -282,12 +300,14 @@
   const startLayer = recall(STORE.layer, 'topo');
   (layers[startLayer] || layers.topo).addTo(map);
   const ArcExport = L.TileLayer.extend({
-    getTileUrl(c) { return overlayTileUrl(this._url, this._getZoomForUrl(), c.x, c.y); }
+    getTileUrl(c) { return overlayTileUrl(this.options.overlay, this._getZoomForUrl(), c.x, c.y); }
   });
   const overlayLayers = {};
   for (const [key, o] of Object.entries(OVERLAYS)) {
     overlayLayers[key] = new ArcExport(o.url, {
-      attribution: 'MN DNR',
+      overlay: o,
+      attribution: o.attr || 'MN DNR',
+      minZoom: o.minZoom || 0,
       maxZoom: 18,
       bounds: o.box.pad(0.1),
       opacity: o.opacity,
@@ -301,6 +321,51 @@
   const saveOverlays = () => store(STORE.overlays, Object.keys(overlayLayers).filter((k) => map.hasLayer(overlayLayers[k])));
   map.on('overlayadd', saveOverlays);
   map.on('overlayremove', saveOverlays);
+
+  // ---------- Parcels: tap one to see who owns it (Becker and Otter Tail only) ----------
+  const escHtml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+  map.on('overlayadd', (e) => {
+    if (e.layer === overlayLayers.parcels && map.getZoom() < OVERLAYS.parcels.minZoom) toast('Zoom in closer to see parcel lines. Tap a parcel to see its owner.', 4000);
+  });
+  let parcelAsk = 0;
+  map.on('click', async (e) => {
+    if (draw || !map.hasLayer(overlayLayers.parcels) || map.getZoom() < OVERLAYS.parcels.minZoom) return;
+    if (!OVERLAYS.parcels.box.contains(e.latlng)) return;
+    // A tap on a pin, line, area or track opens that item's own popup instead.
+    const t = e.originalEvent && e.originalEvent.target;
+    if (t && t.closest && t.closest('.leaflet-interactive, .leaflet-marker-icon')) return;
+    const ask = ++parcelAsk;
+    const q = new URLSearchParams({
+      geometry: e.latlng.lng + ',' + e.latlng.lat, geometryType: 'esriGeometryPoint', inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects', where: PARCEL_WHERE, returnGeometry: 'false', f: 'json',
+      outFields: 'co_name,owner_name,owner_more,acres_poly,acres_deed,abb_legal,section,township,range,county_pin,ctu_name'
+    });
+    let a;
+    try {
+      const r = await fetch(PARCEL_URL + '/0/query?' + q);
+      const j = await r.json();
+      a = j.features && j.features[0] && j.features[0].attributes;
+    } catch (err) {
+      if (ask === parcelAsk) toast('Parcel owner lookup needs a signal.');
+      return;
+    }
+    if (ask !== parcelAsk) return;
+    if (!a) return toast('No parcel found here.');
+    const acres = a.acres_deed || a.acres_poly;
+    const rows = [
+      ['Owner', [a.owner_name, a.owner_more].filter(Boolean).join(' ') || 'Not listed'],
+      ['Acres', acres ? (Math.round(acres * 10) / 10).toLocaleString() + (a.acres_deed ? ' (deed)' : ' (mapped)') : ''],
+      ['Township', a.ctu_name],
+      ['Sec-Twp-Rng', a.section ? a.section + '-' + a.township + '-' + a.range : ''],
+      ['Legal', a.abb_legal],
+      ['Parcel #', a.county_pin]
+    ].filter(([, v]) => v);
+    L.popup({ maxWidth: 280 }).setLatLng(e.latlng).setContent(
+      '<b>' + escHtml(a.co_name || '') + ' County parcel</b>' +
+      rows.map(([k, v]) => '<div><span class="muted small">' + k + ':</span> ' + escHtml(v) + '</div>').join('') +
+      '<div class="muted small" style="margin-top:6px">From county tax records. Lines are approximate and not a survey. Always confirm before you hunt.</div>'
+    ).openOn(map);
+  });
   L.control.scale({ imperial: true, metric: false, position: 'bottomleft' }).addTo(map);
   map.on('baselayerchange', (e) => {
     const key = Object.keys(layers).find((k) => layers[k] === e.layer);
@@ -1604,14 +1669,14 @@
       const keys = await c.keys();
       const topo = keys.filter((k) => k.url.includes('USGSTopo')).length;
       const sat = keys.filter((k) => k.url.includes('USGSImageryOnly')).length;
-      const dnr = keys.filter((k) => k.url.includes('gis.dnr.state.mn.us')).length;
+      const dnr = keys.filter((k) => k.url.includes('gis.dnr.state.mn.us') || k.url.includes('plan_parcels_open')).length;
       const hybrid = keys.filter((k) => k.url.includes('USGSImageryTopo')).length;
       let extra = '';
       if (navigator.storage && navigator.storage.estimate) {
         const est = await navigator.storage.estimate();
         extra = ' · phone storage used by app: ' + Math.round((est.usage || 0) / 1048576) + ' MB';
       }
-      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + dnr.toLocaleString() + ' public-land tiles' + extra;
+      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + dnr.toLocaleString() + ' public-land & parcel tiles' + extra;
     } catch (e) {
       $('offStored').textContent = '';
     }
@@ -1643,10 +1708,10 @@
       const ovUrls = [];
       for (const o of Object.values(OVERLAYS)) {
         if (!o.box.intersects(L.latLngBounds([a.s, a.w], [a.n, a.e]))) continue;
-        for (let z = 8; z <= Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM); z++) {
+        for (let z = Math.max(8, o.minZoom || 0); z <= Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM); z++) {
           const r = tileRange(a, z);
           for (let x = r.x0; x <= r.x1; x++) {
-            for (let y = r.y0; y <= r.y1; y++) ovUrls.push(overlayTileUrl(o.url, z, x, y));
+            for (let y = r.y0; y <= r.y1; y++) ovUrls.push(overlayTileUrl(o, z, x, y));
           }
         }
       }
@@ -1654,7 +1719,7 @@
       if (!ovUrls.length) ok = true;
       else try { const probe = await fetch(ovUrls[0], { mode: 'cors' }); ok = probe.ok; } catch (e) { ok = false; }
       if (ok) urls.push(...ovUrls);
-      else toast('The DNR server would not let me save its public-land layers. Saving the base map only.', 6000);
+      else toast('The state server would not let me save its public-land and parcel layers. Saving the base map only.', 6000);
     }
 
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
