@@ -338,7 +338,7 @@
     const q = new URLSearchParams({
       geometry: e.latlng.lng + ',' + e.latlng.lat, geometryType: 'esriGeometryPoint', inSR: '4326',
       spatialRel: 'esriSpatialRelIntersects', where: PARCEL_WHERE, returnGeometry: 'false', f: 'json',
-      outFields: 'co_name,owner_name,owner_more,acres_poly,acres_deed,abb_legal,section,township,range,county_pin,ctu_name'
+      outFields: 'co_name,tax_year,owner_name,owner_more,acres_poly,acres_deed,abb_legal,section,township,range,county_pin,ctu_name'
     });
     let a;
     try {
@@ -352,8 +352,12 @@
     if (ask !== parcelAsk) return;
     if (!a) return toast('No parcel found here.');
     const acres = a.acres_deed || a.acres_poly;
+    // Tax year shows how fresh the record is; counties send updates at different times, some parcels years old.
+    const ty = +a.tax_year;
+    const taxYear = ty > 1900 ? ty + (ty < new Date().getFullYear() - 1 ? ' (older record, owner may have changed)' : '') : 'Not listed';
     const rows = [
       ['Owner', [a.owner_name, a.owner_more].filter(Boolean).join(' ') || 'Not listed'],
+      ['Tax year', String(taxYear)],
       ['Acres', acres ? (Math.round(acres * 10) / 10).toLocaleString() + (a.acres_deed ? ' (deed)' : ' (mapped)') : ''],
       ['Township', a.ctu_name],
       ['Sec-Twp-Rng', a.section ? a.section + '-' + a.township + '-' + a.range : ''],
