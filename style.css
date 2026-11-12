@@ -354,6 +354,7 @@ progress { width: 100%; height: 12px; margin: 6px 0; }
   color: #fff;
 }
 .pp-actions button.alt { background: var(--btn); color: var(--ink); }
+.pp-actions button:last-child:nth-child(odd) { grid-column: span 2; }
 
 #toast {
   position: fixed;

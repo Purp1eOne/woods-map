@@ -509,7 +509,11 @@
     share.className = 'alt';
     share.textContent = 'Share';
     share.addEventListener('click', () => sharePin(p));
-    actions.append(go, ed, share, hide);
+    const exp = document.createElement('button');
+    exp.className = 'alt';
+    exp.textContent = 'Export';
+    exp.addEventListener('click', () => exportPin(p));
+    actions.append(go, ed, share, exp, hide);
     div.appendChild(actions);
     return div;
   }
@@ -1297,6 +1301,19 @@
       prompt('Copy this and send it:', text + ' ' + link);
     }
   }
+  // One pin as a Woods Map JSON file (same format as the backup, photo included), so More > Import pins reads it.
+  async function exportPin(p) {
+    const b = p.photo ? await getPhoto(p.id) : null;
+    const json = JSON.stringify({ app: 'woods-map', pins: [b ? { ...p, photoData: await blobToDataURL(b) } : p], shapes: [], tracks: [] }, null, 2);
+    const fname = (p.name || 'pin').replace(/[^\w-]+/g, '_') + '.json';
+    const file = new File([json], fname, { type: 'application/json' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ title: p.name || 'Pin', files: [file] }); return; }
+      catch (err) { if (err && err.name === 'AbortError') return; }
+    }
+    download(fname, json, 'application/json');
+    toast('Saved ' + fname + '. Import it with More > Import pins.', 4500);
+  }
   // Opening a shared link: show the spot and open the editor so the pin can be saved.
   function openSharedLink() {
     if (!/^#wp=/.test(location.hash)) return;
@@ -1903,6 +1920,12 @@
         (fileGroups.size ? '\nLeave it empty to keep the groups saved in the file, e.g. when restoring your own backup.' : ''), fileGroups.size ? '' : suggest);
       if (answer === null) return toast('Import cancelled');
       const intoGroup = !what ? null : answer.trim() ? cleanGroup(answer) : (fileGroups.size ? null : cleanGroup(suggest));
+      const show = !what || confirm('Show the imported ' + what + ' on the map now?\n\nOK shows them. Cancel keeps them hidden; turn them on later in Pins > Show on map.');
+      // Hidden imports: a brand-new group is switched off as a whole; in a group that already exists
+      // (like "My pins") only the new pins are hidden, so your own pins stay on the map.
+      const groupsBefore = new Set(groupNames());
+      const importedGroups = new Set();
+      const keepHidden = (x) => { importedGroups.add(x.group); if (!show && groupsBefore.has(x.group)) x.hidden = true; };
       let added = 0;
       for (const p of incoming) {
         if (!isFinite(p.lat) || !isFinite(p.lng)) continue;
@@ -1925,6 +1948,7 @@
         if (typeof p.photoData === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(p.photoData)) {
           try { await savePhoto(np.id, await (await fetch(p.photoData)).blob()); np.photo = true; } catch (e) { /* skip the photo, keep the pin */ }
         }
+        keepHidden(np);
         pins.push(np);
         addMarker(np);
         added++;
@@ -1936,17 +1960,19 @@
         const dup = shapes.some((y) => y.kind === sh.kind && y.name === sh.name && y.pts.length === sh.pts.length &&
           Math.abs(y.pts[0][0] - sh.pts[0][0]) < 1e-6 && Math.abs(y.pts[0][1] - sh.pts[0][1]) < 1e-6);
         if (dup) continue;
+        keepHidden(sh);
         shapes.push(sh);
         refreshShape(sh);
         addedShapes++;
       }
       if (addedShapes) saveShapes();
       const addedTracks = importTracks(inTracks);
-      if (intoGroup && (added || addedShapes)) hiddenGroups.delete(intoGroup); // show what was just imported
+      if (show && intoGroup && (added || addedShapes)) hiddenGroups.delete(intoGroup); // show what was just imported
+      if (!show) importedGroups.forEach((g) => { if (!groupsBefore.has(g)) hiddenGroups.add(g); });
       applyFilter();
       closeSheets();
       const got = [added ? plural(added, 'pin') : '', addedShapes ? addedShapes + (addedShapes === 1 ? ' line, area or route' : ' lines, areas and routes') : '', addedTracks ? plural(addedTracks, 'walk') : ''].filter(Boolean).join(' and ');
-      toast(got ? 'Imported ' + got + (intoGroup ? ' into "' + intoGroup + '"' : '') : 'Nothing new to import');
+      toast(got ? 'Imported ' + got + (intoGroup ? ' into "' + intoGroup + '"' : '') + (show ? '' : ', hidden. Turn them on in Pins > Show on map.') : 'Nothing new to import', show ? 2500 : 5000);
     } catch (err) {
       toast('That file could not be read.');
     }
