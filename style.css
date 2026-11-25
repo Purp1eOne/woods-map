@@ -602,6 +602,11 @@ body.compass .leaflet-popup-tip-container { visibility: hidden; }
 .me-wrap { position: relative; width: 18px; height: 18px; }
 .me-wrap .me-dot { position: absolute; inset: 0; box-sizing: border-box; }
 
+.seglbl {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+  padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, .7); color: #fff;
+  font: 700 12px system-ui, sans-serif; white-space: nowrap; pointer-events: none;
+}
 .ringlbl {
   position: absolute; left: 0; top: 0; transform: translate(6px, -110%);
   font: 700 12px system-ui, sans-serif; white-space: nowrap; color: #fff;
@@ -697,3 +702,7 @@ body.drawing #compassBar, body.drawing #compassHud { display: none; }
 /* Lidar shading over another map: flat ground is lifted to white, so multiplying leaves it as it is
    and only the slopes, ditches and banks darken the map underneath */
 .lidar-blend { mix-blend-mode: multiply; filter: brightness(1.15); }
+
+/* ---- wind at a pin ---- */
+.windhours button { opacity: .75; }
+.windarrow { display: inline-block; font-weight: 900; }

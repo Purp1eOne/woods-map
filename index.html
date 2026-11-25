@@ -167,10 +167,22 @@
   <section id="pinsSheet" class="sheet" hidden>
     <h2>Pins, routes &amp; areas</h2>
     <input id="pinSearch" type="search" placeholder="Search pins" autocomplete="off">
+    <label>Sort
+      <select id="pinSort">
+        <option value="near">Nearest first (newest without GPS)</option>
+        <option value="new">Newest first</option>
+        <option value="old">Oldest first</option>
+        <option value="name">Name, A to Z</option>
+        <option value="type">Type</option>
+      </select>
+    </label>
     <details id="showBox" class="showbox">
       <summary>Show on map: <span id="showSummary">all pins</span></summary>
       <div class="flabel">Pin types <span class="muted small">(tap to show or hide)</span></div>
       <div id="typeChips" class="chips"></div>
+      <div class="flabel">Colors <span class="muted small">(tap one or more to show only those)</span></div>
+      <div id="colorChips" class="swatches"></div>
+      <label class="check"><input id="photoOnly" type="checkbox"> Only pins with a photo</label>
       <div class="flabel">Groups</div>
       <div id="groupChecks"></div>
       <div class="row tight"><button id="btnShowAll">Show all pins</button></div>
@@ -231,13 +243,13 @@
       <p>Tap a route or line and choose <b>Follow</b>, or a walk's <b>Follow back</b>. The yellow bar at the top shows how far is left, the walking time and which way to head. If you drift more than about 40 yards off, it says how far off you are and points you back, with a dashed line to the route. Lines and routes take you to whichever end is farther from you. Follow back takes a walk back to where it started. Tap ✕ to stop.</p>
 
       <h3>Lines and areas</h3>
-      <p>Open <b>Pins</b> and tap <b>Draw a line</b> or <b>Draw an area</b>. Then tap the map to add points. You can also line up the crosshair and tap <b>✚ Crosshair</b>, which is easier to place exactly. Drag a point to move it, and <b>Undo</b> takes back the last one. A line shows its length and walking time, which is handy for entry routes, deer trails and property lines. An area shows its acres and the distance around it, for bedding areas, food plots, CRP or the land you have permission on. Tap <b>Done</b>, or for an area tap its first point. Then give it a name, color, group and notes.</p>
+      <p>Open <b>Pins</b> and tap <b>Draw a line</b> or <b>Draw an area</b>. Then tap the map to add points. You can also line up the crosshair and tap <b>✚ Crosshair</b>, which is easier to place exactly. Drag a point to move it, and <b>Undo</b> takes back the last one. A line shows its length and walking time, which is handy for entry routes, deer trails and property lines. An area shows its acres and the distance around it, for bedding areas, food plots, CRP or the land you have permission on. While you draw, each leg of a line and each side of an area shows its own length. Tap a saved line or area to see them again. Tap <b>Done</b>, or for an area tap its first point. Then give it a name, color, group and notes.</p>
       <p>Tap a line or area on the map to edit it, move its points, share it or hide it. They're listed under the pins in <b>Pins</b>, and <b>Show on map</b> can hide all lines or all areas. <b>Share</b> sends a KML file that Woods Map, Google Earth, onX and most map apps can open.</p>
 
       <h3>Using your pins</h3>
-      <p>Tap a pin on the map for <b>Go there</b>, <b>Edit</b>, <b>Share</b> and <b>Export</b>. <b>Export</b> saves just that pin as a Woods Map file (JSON, with its photo), which you or a friend can load with <b>Import pins</b>. <b>Share</b> sends the pin by text, email or any app, with its photo if it has one. The message has a Google Maps link and a Woods Map link. A friend with Woods Map who opens that link gets the pin ready to save, in a group called "Shared with me". Tap a pin's photo to see it full screen. The <b>Pins</b> button lists every pin, nearest first once GPS is on. You can search, or tap <b>Edit</b> on any row to change or delete a pin.</p>
+      <p>Tap a pin on the map for <b>Go there</b>, <b>Edit</b>, <b>Wind</b>, <b>Share</b> and <b>Export</b>. <b>Wind</b> loads the hourly wind forecast for the pin and draws an orange cone showing where your scent drifts. Tap an hour to see how it changes, which helps pick the stand for the day. It needs a signal. <b>Export</b> saves just that pin as a Woods Map file (JSON, with its photo), which you or a friend can load with <b>Import pins</b>. <b>Share</b> sends the pin by text, email or any app, with its photo if it has one. The message has a Google Maps link and a Woods Map link. A friend with Woods Map who opens that link gets the pin ready to save, in a group called "Shared with me". Tap a pin's photo to see it full screen. The <b>Pins</b> button lists every pin, nearest first once GPS is on. <b>Sort</b> can list them newest, oldest, by name or by type instead. You can search, or tap <b>Edit</b> on any row to change or delete a pin.</p>
       <h3>Groups and hiding pins</h3>
-      <p>Every pin, line and area belongs to a <b>group</b>, like a folder. Your own pins start in <b>My pins</b>. Type a new name in the pin editor's Group box to start another group, such as "2025 season". In <b>Pins</b>, open <b>Show on map</b> to hide or show any mix of pin types, and to switch whole groups off or on. To hide just one pin, tap it and choose <b>Hide</b>, or tick <b>Hide this pin on the map</b> in the editor. It stays in the Pins list, greyed out, and tapping it there shows it again. Lines and areas hide the same way, from their own <b>Hide</b> button or editor. Hidden pins aren't deleted, and the Truck button skips them. A yellow chip at the top tells you when pins are hidden. Tap it to show everything again.</p>
+      <p>Every pin, line and area belongs to a <b>group</b>, like a folder. Your own pins start in <b>My pins</b>. Type a new name in the pin editor's Group box to start another group, such as "2025 season". In <b>Pins</b>, open <b>Show on map</b> to hide or show any mix of pin types, to show only pins of some colors or only pins with a photo, and to switch whole groups off or on. To hide just one pin, tap it and choose <b>Hide</b>, or tick <b>Hide this pin on the map</b> in the editor. It stays in the Pins list, greyed out, and tapping it there shows it again. Lines and areas hide the same way, from their own <b>Hide</b> button or editor. Hidden pins aren't deleted, and the Truck button skips them. A yellow chip at the top tells you when pins are hidden. Tap it to show everything again.</p>
 
       <h3>Finding your way</h3>
       <ul>
@@ -309,7 +321,7 @@
 
       <h3>Recording your walk</h3>
       <p>Tap <b>Track</b>, then <b>Start recording</b>. It records the path you walk so you can follow it back out. The screen stays on while it records, and it only records while the app is open. <b>Pause</b> stops counting while you sit, for example on stand. Saved walks show on the map as a dashed line and stay there until you hide them.</p>
-      <p>Tap a walk in the list, or on the map, for its distance, total and moving time, average speed, climb and descent, and elevation profile. There you can rename it, pick a color, add notes, <b>Follow back</b> to the start, <b>Share</b> it as a GPX file, or <b>Save as a route</b> so you can follow the same path next time.</p>
+      <p>Tap a walk in the list, or on the map, for its distance, total and moving time, average speed, climb and descent, and elevation profile. There you can rename it, pick a color, add notes, <b>Follow back</b> to the start, <b>Share</b> it as a GPX file, or <b>Save as a route</b> so you can follow the same path next time. <b>✂ Trim</b> cuts a stretch off the start or end, for when you forgot to stop at the truck. If you stopped by mistake, open your newest walk and tap <b>Keep recording</b> (within 12 hours).</p>
 
       <h3>Sunrise and shooting hours</h3>
       <p>The chip at the top shows sunrise and sunset for where you are. Tap it for the big game / deer shooting window, which is 30 minutes before sunrise to 30 minutes after sunset in both Minnesota and Illinois. Other seasons have different hours, so check the current regulations.</p>
@@ -426,10 +438,37 @@
       <button id="btnTdFollow">Follow back</button>
       <button id="btnTdShare">Share (GPX)</button>
     </div>
+    <div id="tdTrim" class="trimbox" hidden>
+      <div class="flabel">Trim the walk</div>
+      <p class="muted small">Cut off a part you didn't mean to record, like the drive home. The red part on the map is what gets cut.</p>
+      <label>Cut from the start <input id="tdTrimA" type="range" min="0" value="0"></label>
+      <label>Cut from the end <input id="tdTrimB" type="range" min="0" value="0"></label>
+      <div id="tdTrimInfo" class="muted small"></div>
+      <div class="row tight">
+        <button id="btnTrimApply" class="primary">Trim</button>
+        <button id="btnTrimCancel">Cancel</button>
+      </div>
+    </div>
+    <div class="row">
+      <button id="btnTdResume" hidden>▶ Keep recording</button>
+      <button id="btnTdTrim">✂ Trim</button>
+    </div>
     <div class="row">
       <button id="btnTdRoute">Save as a route</button>
       <button id="btnTdBack">Back</button>
       <button id="btnTdDelete" class="danger">Delete</button>
+    </div>
+  </section>
+
+  <section id="windSheet" class="sheet" hidden>
+    <h2 id="windTitle">Wind</h2>
+    <div id="windNow" class="estimate"></div>
+    <p class="muted small">The orange cone on the map shows where your scent drifts from this pin. Tap an hour to see its wind. Forecast from Open-Meteo, for the area around the pin. Wind in the woods swirls, so treat it as a guide.</p>
+    <div id="windHours" class="chips windhours"></div>
+    <div class="row">
+      <button id="btnWindMap" class="primary">Show on map</button>
+      <button id="btnWindClear">Clear cone</button>
+      <button id="btnWindClose">Close</button>
     </div>
   </section>
 

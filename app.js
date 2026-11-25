@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', compassYd: 'woodsmap.compassYd.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', compassYd: 'woodsmap.compassYd.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', pinFilter: 'woodsmap.pinFilter.v1', pinSort: 'woodsmap.pinSort.v1', dpa: 'woodsmap.dpa.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -433,8 +433,9 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet'];
+  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet', 'windSheet'];
   function showSheet(id) {
+    if (id !== 'trackDetail') clearTrim(); // the trim preview belongs to the walk details only
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });
     $('backdrop').hidden = false;
     clearTimeout(toastTimer); // a message left on screen would float over the sheet
@@ -561,7 +562,11 @@
     exp.className = 'alt';
     exp.textContent = 'Export';
     exp.addEventListener('click', () => exportPin(p));
-    actions.append(go, ed, share, exp, hide);
+    const wnd = document.createElement('button');
+    wnd.className = 'alt';
+    wnd.textContent = 'Wind';
+    wnd.addEventListener('click', () => { map.closePopup(); openWind(p); });
+    actions.append(go, ed, wnd, share, exp, hide);
     div.appendChild(actions);
     return div;
   }
@@ -571,8 +576,13 @@
   // What's hidden on the map and in the list: pin types and groups. Remembered between visits.
   const hiddenTypes = new Set(recall(STORE.hiddenTypes, []));
   const hiddenGroups = new Set(recall(STORE.hiddenGroups, []));
-  // inFilter: its type and group are switched on. isShown: also not hidden one by one (p.hidden).
-  const inFilter = (p) => !hiddenTypes.has(CATS[p.cat] ? p.cat : 'other') && !hiddenGroups.has(groupOf(p));
+  // Like onX's filters: show only pins of some colors, or only pins with a photo. Remembered too.
+  const pinFilter = recall(STORE.pinFilter, {});
+  const onlyColors = new Set(Array.isArray(pinFilter.colors) ? pinFilter.colors : []);
+  let photoOnly = !!pinFilter.photo;
+  // inFilter: its type, group and color are switched on. isShown: also not hidden one by one (p.hidden).
+  const inFilter = (p) => !hiddenTypes.has(CATS[p.cat] ? p.cat : 'other') && !hiddenGroups.has(groupOf(p))
+    && (!onlyColors.size || onlyColors.has(pinColor(p))) && (!photoOnly || !!p.photo);
   const isShown = (p) => !p.hidden && inFilter(p);
   function setPinHidden(p, hide) {
     p.hidden = !!hide;
@@ -671,7 +681,7 @@
     applyFilter();
     if (isShown(p)) toast('Pin saved');
     else if (p.hidden) toast('Pin saved and hidden. It stays in the Pins list, where a tap shows it again.', 5000);
-    else toast('Pin saved. Its type or group is hidden, so turn it on under Pins > Show on map to see it.', 6000);
+    else toast('Pin saved. Its type, group or color is filtered out, so turn it on under Pins > Show on map to see it.', 6000);
   });
   $('btnPinCancel').addEventListener('click', () => { closeSheets(); editing = null; });
   $('btnPinDelete').addEventListener('click', () => {
@@ -684,6 +694,7 @@
     deletePhoto(id);
     forgetPhotoURL(id);
     if (target && target.id === id) setTarget(null);
+    if (wind && wind.p.id === id) clearWind();
     closeSheets();
     editing = null;
   });
@@ -761,6 +772,40 @@
     const m = lengthOf(sh.pts);
     const e = elevFor(sh);
     return fmtDist(m) + ' · about ' + fmtTime(walkMin(m) + climbMin(e)) + ' walking' + (e ? ' · ' + elevText(e) : '');
+  }
+
+  // Length labels on each leg of a line and each side of an area (like onX), halfway along it.
+  // A route's leg is the trail between two of the points you placed, so it is measured along the trail.
+  function legsOf(kind, pts, vi) {
+    if (kind === 'route' && vi) return vi.slice(1).map((j, n) => pts.slice(vi[n], j + 1));
+    const legs = [];
+    for (let i = 1; i < pts.length; i++) legs.push([pts[i - 1], pts[i]]);
+    if (kind === 'area' && pts.length > 2) legs.push([pts[pts.length - 1], pts[0]]);
+    return legs;
+  }
+  function midOf(leg) {
+    const half = lengthOf(leg) / 2;
+    let run = 0;
+    for (let i = 1; i < leg.length; i++) {
+      const [a, b] = [leg[i - 1], leg[i]];
+      const d = dist({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] });
+      if (run + d >= half) { const f = d ? (half - run) / d : 0; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+      run += d;
+    }
+    return leg[0];
+  }
+  function legLabels(legs) {
+    const g = L.layerGroup();
+    if (legs.length < 2 || legs.length > 80) return g; // one leg is already the total; very many would just be clutter
+    for (const leg of legs) {
+      const m = lengthOf(leg);
+      if (m < 1) continue;
+      g.addLayer(L.marker(midOf(leg), {
+        icon: L.divIcon({ className: '', html: '<div class="unrot" style="transform-origin:0 0"><span class="seglbl">' + fmtDist(m) + '</span></div>', iconSize: [0, 0] }),
+        interactive: false, keyboard: false
+      }));
+    }
+    return g;
   }
 
   // ---------- Elevation (USGS 3DEP: 1 m bare-earth, needs a signal; the result is saved with the route or track) ----------
@@ -851,8 +896,16 @@
       ? L.polygon(ll, { color: c, weight: 3, fillColor: c, fillOpacity: 0.18 })
       : L.polyline(ll, { color: c, weight: 5, opacity: 0.95 });
     // While drawing, a tap on an existing line or area adds a point instead of opening it.
-    l.on('click', (e) => { if (!draw) L.popup().setLatLng(e.latlng).setContent(shapePopup(sh)).openOn(map); });
+    l.on('click', (e) => { if (!draw) openShapePopup(sh, e.latlng); });
     return l;
+  }
+  // A shape's popup; while it is open, each leg or side shows its length.
+  function openShapePopup(sh, at) {
+    const labels = legLabels(legsOf(sh.kind, sh.pts, viaOf(sh)));
+    const pop = L.popup().setLatLng(at).setContent(shapePopup(sh));
+    pop.on('add', () => labels.addTo(map));
+    pop.on('remove', () => map.removeLayer(labels));
+    pop.openOn(map);
   }
   function refreshShape(sh) {
     const old = shapeLayers.get(sh.id);
@@ -918,7 +971,7 @@
     const l = shapeLayers.get(sh.id);
     if (!l) return;
     map.flyToBounds(l.getBounds(), { padding: [40, 40], maxZoom: 17, duration: 0.8 });
-    setTimeout(() => L.popup().setLatLng(sh.kind === 'area' ? l.getBounds().getCenter() : l.getLatLngs()[Math.floor(l.getLatLngs().length / 2)]).setContent(shapePopup(sh)).openOn(map), 900);
+    setTimeout(() => openShapePopup(sh, sh.kind === 'area' ? l.getBounds().getCenter() : l.getLatLngs()[Math.floor(l.getLatLngs().length / 2)]), 900);
   }
 
   // Drawing: tap the map (or use the crosshair) to add points, drag a point to move it.
@@ -940,7 +993,7 @@
     if (cmp.on) stopCompass();
     closeSheets();
     map.closePopup();
-    draw = { kind, shape: existing || null, pts: [], segs: [], vtx: [], preview: null, busy: 0 };
+    draw = { kind, shape: existing || null, pts: [], segs: [], vtx: [], preview: null, labels: null, busy: 0 };
     if (existing) {
       const vi = viaOf(existing);
       const xy = (p) => [p[0], p[1]];
@@ -985,8 +1038,14 @@
       if (draw === d) redrawDraft();
     }
   }
+  function drawLegLabels() {
+    if (draw.labels) map.removeLayer(draw.labels);
+    const legs = draw.kind === 'route' ? (draw.pts.length >= 2 ? draw.segs.filter(Boolean) : []) : legsOf(draw.kind, draw.pts);
+    draw.labels = legLabels(legs).addTo(map);
+  }
   function redrawDraft() {
     if (!draw) return;
+    drawLegLabels();
     const k = SHAPE_KINDS[draw.kind];
     const c = draw.shape ? shapeColor(draw.shape) : k.color;
     if (draw.preview) map.removeLayer(draw.preview);
@@ -1005,6 +1064,7 @@
           if (i < draw.pts.length - 1) draw.segs[i] = [draw.pts[i], draw.pts[i + 1]];
         }
         draw.preview.setLatLngs(draftPath());
+        drawLegLabels();
         drawStatus();
       });
       m.on('dragend', () => {
@@ -1047,6 +1107,7 @@
   function stopDraw() {
     if (!draw) return;
     if (draw.preview) map.removeLayer(draw.preview);
+    if (draw.labels) map.removeLayer(draw.labels);
     draw.vtx.forEach((m) => map.removeLayer(m));
     const sh = draw.shape;
     draw = null;
@@ -1217,6 +1278,99 @@
     }
     return best;
   }
+
+  // ---------- Wind at a pin (like onX's Wind Direction) ----------
+  // Hourly wind from Open-Meteo (free, no key). The pin's spot is rounded to about 1 km before it is sent.
+  const WIND_URL = 'https://api.open-meteo.com/v1/forecast';
+  let wind = null; // { p, hours: [{ t, from, mph, gust }], i, cone }
+  let windAsk = 0;
+  function destPt(lat, lng, brg, m) {
+    const d = m / 6371000, b = rad(brg), la = rad(lat), lo = rad(lng);
+    const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+    const lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+    return [la2 * 180 / Math.PI, lo2 * 180 / Math.PI];
+  }
+  function clearWind() {
+    if (wind && wind.cone) map.removeLayer(wind.cone);
+    wind = null;
+  }
+  const windHour = (t) => {
+    const h = +t.slice(11, 13);
+    return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
+  };
+  function drawWindCone() {
+    if (wind.cone) map.removeLayer(wind.cone);
+    const { p } = wind, w = wind.hours[wind.i];
+    const to = (w.from + 180) % 360;
+    // Longer in a stronger wind: about 150 yd when calm up to 400 yd at 20 mph and more.
+    const len = (150 + Math.min(w.mph, 20) * 12.5) * YD;
+    const half = w.mph < 3 ? 45 : 20; // light wind wanders, so the cone is wider
+    const arc = [];
+    for (let a = -half; a <= half; a += half / 6) arc.push(destPt(p.lat, p.lng, to + a, len));
+    const cone = L.polygon([[p.lat, p.lng], ...arc], { color: '#ef6c00', weight: 2, fillColor: '#ef6c00', fillOpacity: 0.22, dashArray: w.mph < 3 ? '6 6' : null });
+    cone.on('click', () => { if (!draw) openWind(p, true); });
+    const tip = L.marker(destPt(p.lat, p.lng, to, len), {
+      icon: L.divIcon({ className: '', html: '<div class="unrot" style="transform-origin:0 0"><span class="seglbl">Scent · ' + Math.round(w.mph) + ' mph</span></div>', iconSize: [0, 0] }),
+      interactive: false, keyboard: false
+    });
+    wind.cone = L.featureGroup([cone, tip]).addTo(map);
+  }
+  function renderWind() {
+    const w = wind.hours[wind.i];
+    const to = (w.from + 180) % 360;
+    $('windNow').textContent = (wind.i === 0 ? 'Now' : windHour(w.t)) + ': wind from the ' + compass(w.from) + ' at ' + Math.round(w.mph) + ' mph' +
+      (w.gust > w.mph + 4 ? ', gusts ' + Math.round(w.gust) : '') + '. Your scent drifts ' + compass(to) + (w.mph < 3 ? ', but light wind swirls, so expect it to drift around.' : '.');
+    const box = $('windHours');
+    box.replaceChildren();
+    const day0 = wind.hours[0].t.slice(0, 10);
+    wind.hours.forEach((x, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(i === wind.i));
+      const ar = document.createElement('span');
+      ar.className = 'windarrow';
+      ar.textContent = '↑';
+      ar.style.transform = 'rotate(' + Math.round((x.from + 180) % 360) + 'deg)';
+      b.append((i === 0 ? 'Now' : (x.t.slice(0, 10) !== day0 && +x.t.slice(11, 13) === 0 ? 'Midnight' : windHour(x.t))) + ' ', ar, ' ' + compass(x.from) + ' ' + Math.round(x.mph));
+      b.title = 'From the ' + compass(x.from) + ' at ' + Math.round(x.mph) + ' mph';
+      b.addEventListener('click', () => { wind.i = i; renderWind(); });
+      box.appendChild(b);
+    });
+    drawWindCone();
+  }
+  async function openWind(p, keep) {
+    showSheet('windSheet');
+    $('windTitle').textContent = 'Wind at ' + (p.name || 'this pin');
+    if (keep && wind && wind.p === p) return renderWind();
+    clearWind();
+    $('windHours').replaceChildren();
+    $('windNow').textContent = 'Loading the wind forecast…';
+    if (navigator.onLine === false) { $('windNow').textContent = 'The wind forecast needs a signal.'; return; }
+    const ask = ++windAsk;
+    try {
+      const q = new URLSearchParams({
+        latitude: p.lat.toFixed(2), longitude: p.lng.toFixed(2), hourly: 'wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+        wind_speed_unit: 'mph', timezone: CHI, forecast_hours: '24'
+      });
+      const r = await fetch(WIND_URL + '?' + q, { signal: AbortSignal.timeout(12000) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const h = (await r.json()).hourly;
+      const hours = h.time.map((t, i) => ({ t, from: h.wind_direction_10m[i], mph: h.wind_speed_10m[i], gust: h.wind_gusts_10m[i] }))
+        .filter((x) => isFinite(x.from) && isFinite(x.mph));
+      if (!hours.length) throw new Error('no wind');
+      if (ask !== windAsk) return;
+      wind = { p, hours, i: 0, cone: null };
+      renderWind();
+    } catch (e) {
+      if (ask === windAsk) $('windNow').textContent = 'Could not load the wind forecast. Try again with a better signal.';
+    }
+  }
+  $('btnWindMap').addEventListener('click', () => {
+    closeSheets();
+    if (wind && wind.cone) map.fitBounds(wind.cone.getBounds().pad(0.3), { maxZoom: 17 });
+  });
+  $('btnWindClear').addEventListener('click', () => { windAsk++; clearWind(); closeSheets(); });
+  $('btnWindClose').addEventListener('click', closeSheets);
 
   // ---------- Pin photos ----------
   // Photos are too big for localStorage, so they live in IndexedDB, one per pin, keyed by pin id.
@@ -1397,8 +1551,13 @@
     const q = $('pinSearch').value.trim().toLowerCase();
     const shown = pins.filter(inFilter); // pins hidden one by one stay in the list, greyed out
     const items = shown.filter((p) => !q || ((p.name || '') + ' ' + (p.notes || '') + ' ' + groupOf(p) + ' ' + (CATS[p.cat] || CATS.other).label).toLowerCase().includes(q));
-    if (me) items.sort((a, b) => dist(me, a) - dist(me, b));
-    else items.sort((a, b) => b.created - a.created);
+    const sortBy = $('pinSort').value;
+    const byName = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
+    if (sortBy === 'near' && me) items.sort((a, b) => dist(me, a) - dist(me, b));
+    else if (sortBy === 'old') items.sort((a, b) => (a.created || 0) - (b.created || 0));
+    else if (sortBy === 'name') items.sort(byName);
+    else if (sortBy === 'type') items.sort((a, b) => (CATS[a.cat] || CATS.other).label.localeCompare((CATS[b.cat] || CATS.other).label) || byName(a, b));
+    else items.sort((a, b) => (b.created || 0) - (a.created || 0));
     const ul = $('pinList');
     ul.replaceChildren();
     if (!items.length) {
@@ -1461,7 +1620,12 @@
     const shown = shapes.filter(shapeInFilter);
     const items = shown.filter((sh) => !q || ((sh.name || '') + ' ' + (sh.notes || '') + ' ' + groupOf(sh) + ' ' + SHAPE_KINDS[sh.kind].label).toLowerCase().includes(q));
     const near = (sh) => Math.min(...toLL(sh.pts).map((p) => dist(me, p)));
-    if (me) items.sort((a, b) => near(a) - near(b)); else items.sort((a, b) => b.created - a.created);
+    const sortBy = $('pinSort').value;
+    if (sortBy === 'near' && me) items.sort((a, b) => near(a) - near(b));
+    else if (sortBy === 'old') items.sort((a, b) => (a.created || 0) - (b.created || 0));
+    else if (sortBy === 'name') items.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }));
+    else if (sortBy === 'type') items.sort((a, b) => a.kind.localeCompare(b.kind) || (a.name || '').localeCompare(b.name || ''));
+    else items.sort((a, b) => (b.created || 0) - (a.created || 0));
     $('shapeHead').hidden = !shapes.length;
     for (const sh of items) {
       const k = SHAPE_KINDS[sh.kind];
@@ -1504,6 +1668,8 @@
   }
   $('btnPins').addEventListener('click', () => { $('pinSearch').value = ''; renderShowBox(); renderList(); showSheet('pinsSheet'); });
   $('pinSearch').addEventListener('input', renderList);
+  $('pinSort').value = ['near', 'new', 'old', 'name', 'type'].includes(recall(STORE.pinSort, 'near')) ? recall(STORE.pinSort, 'near') : 'near';
+  $('pinSort').addEventListener('change', () => { store(STORE.pinSort, $('pinSort').value); renderList(); });
 
   // ---------- Compass mode (like onX): the map turns with the phone so the way you face is up ----------
   // Leaflet can't rotate, so #map becomes a square as wide as the screen's diagonal (no bare corners
@@ -3148,8 +3314,97 @@
     ];
     $('tdStats').replaceChildren(...rows.flatMap(([k, v]) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; return [dt, dd]; }));
   }
+  // Trim: cut points off the start or end of a walk (like onX's Track Trimming).
+  let trimPrev = null;
+  function clearTrim() {
+    if (trimPrev) map.removeLayer(trimPrev);
+    trimPrev = null;
+    $('tdTrim').hidden = true;
+  }
+  document.addEventListener('sheetsclosed', clearTrim);
+  function trimCuts(moved) {
+    const n = trackEditing.pts.length;
+    let a = +$('tdTrimA').value, b = +$('tdTrimB').value;
+    if (a + b > n - 2) { // keep at least two points; the slider just moved gives way
+      if (moved === $('tdTrimA')) a = n - 2 - b; else b = n - 2 - a;
+      $('tdTrimA').value = a; $('tdTrimB').value = b;
+    }
+    return [a, b];
+  }
+  function updateTrim(e) {
+    const t = trackEditing;
+    if (!t) return;
+    const [a, b] = trimCuts(e && e.target);
+    const n = t.pts.length, ll = (p) => [p[0], p[1]];
+    if (trimPrev) map.removeLayer(trimPrev);
+    const parts = [];
+    if (a) parts.push(L.polyline(t.pts.slice(0, a + 1).map(ll), { color: '#d50000', weight: 7, opacity: 0.9, interactive: false }));
+    if (b) parts.push(L.polyline(t.pts.slice(n - b - 1).map(ll), { color: '#d50000', weight: 7, opacity: 0.9, interactive: false }));
+    trimPrev = L.layerGroup(parts).addTo(map);
+    const kept = t.pts.slice(a, n - b);
+    const mins = (p, q) => fmtDur((q[2] - p[2]) * 1000);
+    $('tdTrimInfo').textContent = 'Keeps ' + fmtDist(trackMeters(kept)) + ' of ' + fmtDist(t.meters) +
+      (a ? ' · cuts the first ' + mins(t.pts[0], t.pts[a]) : '') + (b ? ' · cuts the last ' + mins(t.pts[n - b - 1], t.pts[n - 1]) : '');
+    $('btnTrimApply').disabled = !a && !b;
+  }
+  $('btnTdTrim').addEventListener('click', () => {
+    const t = trackEditing;
+    if (!t || t.pts.length < 3) return toast('That walk is too short to trim.');
+    const max = t.pts.length - 2;
+    $('tdTrimA').max = max; $('tdTrimB').max = max;
+    $('tdTrimA').value = 0; $('tdTrimB').value = 0;
+    $('tdTrim').hidden = false;
+    if (!trackLines.has(t.id)) showTrack(t, false);
+    const l = trackLines.get(t.id);
+    if (l) map.fitBounds(l.getBounds().pad(0.2), { maxZoom: 17 });
+    updateTrim();
+    $('tdTrim').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+  $('tdTrimA').addEventListener('input', updateTrim);
+  $('tdTrimB').addEventListener('input', updateTrim);
+  $('btnTrimCancel').addEventListener('click', clearTrim);
+  $('btnTrimApply').addEventListener('click', () => {
+    const t = trackEditing;
+    if (!t) return;
+    const [a, b] = trimCuts();
+    if (!a && !b) return clearTrim();
+    const kept = t.pts.slice(a, t.pts.length - b).map((p) => p.slice(0, 3).concat(p[3] ? [p[3]] : []));
+    kept[0].length = 3; // the first point can't start after a pause
+    if (a) t.start = kept[0][2] * 1000;
+    if (b) t.end = kept[kept.length - 1][2] * 1000;
+    t.pts = kept;
+    t.meters = trackMeters(kept);
+    delete t.elev; // measured again for the shorter walk
+    saveTracks();
+    clearTrim();
+    restyleTrack(t);
+    fillTrackStats(t);
+    renderElevBox($('tdElev'), t, saveTracks, () => { if (trackEditing === t) fillTrackStats(t); });
+    toast('Trimmed to ' + fmtDist(t.meters));
+  });
+  // Keep recording: picks up the newest walk again if it was stopped in the last 12 hours (like onX's Resume).
+  const canResume = (t) => !rec && t === tracks[0] && t.end && Date.now() - t.end < 12 * 3600000;
+  function resumeTrack(t) {
+    if (!canResume(t)) return;
+    if (!('geolocation' in navigator)) return toast('GPS is not available on this device');
+    rec = t;
+    t.end = null;
+    t.gapNext = true; // the time stopped is a gap, not walked distance
+    hideTrack(t.id, true);
+    showTrack(t, true);
+    startGPS();
+    keepAwake();
+    saveTracks();
+    trackEditing = null;
+    openTrackSheet();
+    toast('Recording again. Keep the screen on and the app open.', 4500);
+  }
+  $('btnTdResume').addEventListener('click', () => { if (trackEditing) resumeTrack(trackEditing); });
+
   function openTrackDetail(t) {
+    clearTrim();
     trackEditing = t;
+    $('btnTdResume').hidden = !canResume(t);
     $('tdName').value = t.name;
     $('tdNotes').value = t.notes || '';
     trackPicked = trackColor(t);
@@ -3415,16 +3670,20 @@
   function saveHidden() {
     store(STORE.hiddenTypes, [...hiddenTypes]);
     store(STORE.hiddenGroups, [...hiddenGroups]);
+    store(STORE.pinFilter, { colors: [...onlyColors], photo: photoOnly });
   }
   function hiddenSummary() {
     const t = hiddenTypes.size, g = [...hiddenGroups].filter((x) => groupNames().includes(x)).length;
     const one = pins.filter((p) => p.hidden).length + shapes.filter((sh) => sh.hidden).length;
-    if (!t && !g && !one) return '';
+    const c = onlyColors.size;
+    if (!t && !g && !one && !c && !photoOnly) return '';
     const shownTypes = Object.keys(CATS).filter((k) => !hiddenTypes.has(k));
     if (shapes.length && Object.keys(SHAPE_KINDS).some((k) => !hiddenTypes.has('_' + k))) shownTypes.push('');
     const parts = [];
     if (t) parts.push(shownTypes.length === 1 && shownTypes[0] ? 'only ' + CATS[shownTypes[0]].label : t + ' type' + (t === 1 ? '' : 's') + ' hidden');
     if (g) parts.push(g + ' group' + (g === 1 ? '' : 's') + ' hidden');
+    if (c) parts.push(c === 1 ? 'only ' + (PIN_COLORS.find(([x]) => onlyColors.has(x)) || ['', 'one color'])[1].toLowerCase() + ' pins' : 'only ' + c + ' colors');
+    if (photoOnly) parts.push('only pins with photos');
     if (one) parts.push(one + ' item' + (one === 1 ? '' : 's') + ' hidden');
     return parts.join(', ');
   }
@@ -3448,6 +3707,29 @@
       });
       chips.appendChild(b);
     }
+    // Colors in use (by a pin's own color or its type's), to show only some of them.
+    const cbox = $('colorChips');
+    cbox.replaceChildren();
+    const usedColors = new Set(pins.map(pinColor));
+    onlyColors.forEach((c) => usedColors.add(c));
+    for (const c of usedColors) {
+      const named = PIN_COLORS.find(([x]) => x === c);
+      const label = named ? named[1] : 'Type color ' + Object.values(CATS).filter((x) => x.color === c).map((x) => x.short).slice(0, 3).join(', ');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch';
+      b.style.setProperty('--c', c);
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      b.setAttribute('aria-pressed', String(onlyColors.has(c)));
+      b.addEventListener('click', () => {
+        if (onlyColors.has(c)) onlyColors.delete(c); else onlyColors.add(c);
+        applyFilter();
+      });
+      cbox.appendChild(b);
+    }
+    if (!usedColors.size) cbox.textContent = 'No pins yet.';
+    $('photoOnly').checked = photoOnly;
     const box = $('groupChecks');
     box.replaceChildren();
     for (const g of groupNames()) {
@@ -3485,11 +3767,14 @@
   function showAllPins() {
     hiddenTypes.clear();
     hiddenGroups.clear();
+    onlyColors.clear();
+    photoOnly = false;
     if (pins.some((p) => p.hidden)) { pins.forEach((p) => { delete p.hidden; }); store(STORE.pins, pins); }
     if (shapes.some((sh) => sh.hidden)) { shapes.forEach((sh) => { delete sh.hidden; }); saveShapes(); }
     applyFilter();
   }
   $('btnShowAll').addEventListener('click', showAllPins);
+  $('photoOnly').addEventListener('change', () => { photoOnly = $('photoOnly').checked; applyFilter(); });
   $('filterChip').addEventListener('click', showAllPins);
   applyFilter();
 
