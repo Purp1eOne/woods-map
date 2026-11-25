@@ -149,7 +149,7 @@ html, body {
 #topbar > * { pointer-events: auto; }
 #toprow { display: flex; flex-wrap: wrap; gap: 6px; }
 
-#coords, #sunChip, #filterChip, #cropChip {
+#coords, #sunChip, #filterChip, #cropChip, #slopeChip {
   font: 600 13px ui-monospace, Menlo, Consolas, monospace;
   background: var(--chip-bg);
   color: var(--ink);
@@ -553,7 +553,7 @@ body:has(.leaflet-control-layers-expanded) #topbar { visibility: hidden; }
 .drawbtns button.primary { background: var(--accent); border-color: var(--accent-line); color: #fff; }
 .drawbtns button:disabled { opacity: .45; }
 #btnDrawCancel { flex: 0 0 40px; }
-body.drawing #bar, body.drawing #fab, body.drawing #filterChip, body.drawing #cropChip, body.drawing #navinfo { display: none; }
+body.drawing #bar, body.drawing #fab, body.drawing #filterChip, body.drawing #cropChip, body.drawing #slopeChip, body.drawing #navinfo { display: none; }
 .vtx {
   width: 30px; height: 30px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -712,3 +712,5 @@ body.drawing #compassBar, body.drawing #compassHud { display: none; }
 .cropkey { list-style: none; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 14px; }
 .cropkey li { display: flex; align-items: center; gap: 8px; }
 .cropsw { flex: none; width: 22px; height: 16px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, .35); }
+#slopeChip { background: #9c27b0; color: #fff; font-family: system-ui, sans-serif; }
+.cropkey.onecol { grid-template-columns: 1fr; }

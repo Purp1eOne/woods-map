@@ -75,6 +75,19 @@
       zIndex: 4,
       noSave: true
     },
+    // Slope for gentle ground (onX's Slope Angle starts at 5°, which leaves most of Minnesota blank).
+    // USGS works out the slope from lidar and colors it; flat ground under 2° stays clear.
+    slope: {
+      name: 'Slope (gentle-terrain scale)',
+      tileUrl: (z, x, y) => slopeTileUrl(z, x, y),
+      box: MN,
+      opacity: 0.6,
+      opacity3d: 0.5,
+      minZoom: 12,
+      attr: 'Slope: USGS 3DEP',
+      zIndex: 4,
+      kb: 20
+    },
     wma: {
       name: 'MN DNR public land (WMAs)',
       url: 'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_wildlife_mgmt_areas_pub/MapServer',
@@ -130,6 +143,37 @@
     const f = (n) => n.toFixed(3);
     return LIDAR_URL + '?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
       '&bboxSR=3857&imageSR=3857&size=256,256&format=jpgpng&renderingRule=' + LIDAR_RULE + '&f=image';
+  }
+
+  // Slope classes: [from degrees, to degrees, color, what it usually is around here]. Used for the map and its key.
+  const SLOPE_CLASSES = [
+    [2, 4, '#ffeb3b', 'Gentle rise'],
+    [4, 7, '#ff9800', 'Hillside'],
+    [7, 10, '#f44336', 'Steep for here: ridge sides, knobs'],
+    [10, 15, '#9c27b0', 'Very steep: lake banks, ravine sides'],
+    [15, 90, '#283593', 'Steepest: cut banks, ravine walls']
+  ];
+  const SLOPE_RULE = encodeURIComponent(JSON.stringify({
+    rasterFunction: 'Colormap',
+    rasterFunctionArguments: {
+      Colormap: SLOPE_CLASSES.map(([, , c], i) => [i + 1, parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]),
+      Raster: {
+        rasterFunction: 'Remap',
+        rasterFunctionArguments: {
+          InputRanges: SLOPE_CLASSES.flatMap(([a, b]) => [a, b]),
+          OutputValues: SLOPE_CLASSES.map((_, i) => i + 1),
+          NoDataRanges: [0, SLOPE_CLASSES[0][0]],
+          Raster: { rasterFunction: 'Slope', rasterFunctionArguments: { ZFactor: 1 } }
+        }
+      }
+    }
+  }));
+  function slopeTileUrl(z, x, y) {
+    const res = (MERC * 2) / Math.pow(2, z);
+    const x0 = -MERC + x * res, y1 = MERC - y * res;
+    const f = (n) => n.toFixed(3);
+    return LIDAR_URL + '?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
+      '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&renderingRule=' + SLOPE_RULE + '&f=image';
   }
 
   // Pin types, grouped by section in the editor's Type list. Keys are saved with each pin, so never rename one.
@@ -443,11 +487,22 @@
   $('btnCropOff').addEventListener('click', () => { map.removeLayer(overlayLayers.crops); saveOverlays(); syncCropChip(); closeSheets(); });
   $('btnCropClose').addEventListener('click', closeSheets);
 
+  // ---------- Slope color key ----------
+  fillCropKey($('slopeKey'), [['transparent', 'Clear: flat, under 2° (fields, swamps, benches, saddles)'],
+    ...SLOPE_CLASSES.map(([a, b, c, what]) => [c, (b >= 90 ? a + '° and up' : a + '° to ' + b + '°') + ': ' + what])]);
+  const syncSlopeChip = () => { $('slopeChip').hidden = !map.hasLayer(overlayLayers.slope); };
+  map.on('overlayadd overlayremove', syncSlopeChip);
+  syncSlopeChip();
+  $('slopeChip').addEventListener('click', () => showSheet('slopeSheet'));
+  $('btnSlopeOff').addEventListener('click', () => { map.removeLayer(overlayLayers.slope); saveOverlays(); syncSlopeChip(); closeSheets(); });
+  $('btnSlopeClose').addEventListener('click', closeSheets);
+
   // ---------- Parcels: tap one to see who owns it (Becker and Otter Tail only) ----------
   const escHtml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
   map.on('overlayadd', (e) => {
     if (e.layer === overlayLayers.parcels && map.getZoom() < OVERLAYS.parcels.minZoom) toast('Zoom in closer to see parcel lines. Tap a parcel to see its owner.', 4000);
     if (e.layer === overlayLayers.lidar && map.getZoom() < OVERLAYS.lidar.minZoom) toast('Zoom in closer to see the lidar shading.', 4000);
+    if (e.layer === overlayLayers.slope) toast((map.getZoom() < OVERLAYS.slope.minZoom ? 'Zoom in closer to see slope. ' : '') + 'Tap the Slope chip at the top for the color key.', 5000);
     if (e.layer === overlayLayers.crops) toast((map.getZoom() < 10 ? 'Zoom in closer to see crops. ' : '') + 'Tap the Crops chip at the top for the color key and the year.', 5000);
   });
   let parcelAsk = 0;
@@ -513,7 +568,7 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet', 'windSheet', 'cropSheet'];
+  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet', 'windSheet', 'cropSheet', 'slopeSheet'];
   function showSheet(id) {
     if (id !== 'trackDetail') clearTrim(); // the trim preview belongs to the walk details only
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });
@@ -2506,8 +2561,8 @@
   // 3D hill heights: only up to DEM_MAX_ZOOM, since the 3D view never asks for closer ones.
   const demTileUrl = (z, x, y) => DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
   const terrainTileCount = (a, zMax) => countTiles(a, Math.min(zMax, DEM_MAX_ZOOM));
-  function overlayTileCount(a, zMax) {
-    return countTiles(a, Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM)) * Object.values(OVERLAYS).filter((o) => !o.noSave).length;
+  function overlayKB(a, zMax) {
+    return Object.values(OVERLAYS).filter((o) => !o.noSave).reduce((kb, o) => kb + countTiles(a, Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM)) * (o.kb || OVERLAY_AVG_KB), 0);
   }
 
   function updateEstimate() {
@@ -2520,7 +2575,7 @@
     }
     const zMax = +$('offZoom').value;
     const n = countTiles(a, zMax) * ($('offLayer').value === 'trails' ? TRAIL_PARTS.length : 1);
-    const extra = ($('offOverlays').checked ? overlayTileCount(a, zMax) * OVERLAY_AVG_KB : 0) +
+    const extra = ($('offOverlays').checked ? overlayKB(a, zMax) : 0) +
       ($('offTerrain').checked ? terrainTileCount(a, zMax) * DEM_AVG_KB : 0);
     const mb = Math.round((n * AVG_KB + extra) / 1024);
     if (n > MAX_TILES) {
@@ -2576,23 +2631,24 @@
     }
 
     if ($('offOverlays').checked) {
-      // Probe first: if the DNR server won't allow its images to be saved, skip those layers cleanly.
-      const ovUrls = [];
+      // Probe each layer first: if its server won't allow its images to be saved, skip that layer cleanly.
+      const refused = [];
       for (const o of Object.values(OVERLAYS)) {
         if (o.noSave) continue;
         if (!o.box.intersects(L.latLngBounds([a.s, a.w], [a.n, a.e]))) continue;
+        const ovUrls = [];
         for (let z = Math.max(8, o.minZoom || 0); z <= Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM); z++) {
           const r = tileRange(a, z);
           for (let x = r.x0; x <= r.x1; x++) {
             for (let y = r.y0; y <= r.y1; y++) ovUrls.push(overlayTileUrl(o, z, x, y));
           }
         }
+        if (!ovUrls.length) continue;
+        let ok = false;
+        try { const probe = await fetch(ovUrls[0], { mode: 'cors' }); ok = probe.ok; } catch (e) { ok = false; }
+        if (ok) urls.push(...ovUrls); else refused.push(o.name);
       }
-      let ok = false;
-      if (!ovUrls.length) ok = true;
-      else try { const probe = await fetch(ovUrls[0], { mode: 'cors' }); ok = probe.ok; } catch (e) { ok = false; }
-      if (ok) urls.push(...ovUrls);
-      else toast('The state server would not let me save its public-land and parcel layers. Saving the base map only.', 6000);
+      if (refused.length) toast('These layers could not be saved, so they are skipped: ' + refused.join(', ') + '.', 6000);
     }
 
     if ($('offTerrain').checked) {

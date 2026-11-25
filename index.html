@@ -32,6 +32,7 @@
     </div>
     <button id="filterChip" hidden></button>
     <button id="cropChip" hidden></button>
+    <button id="slopeChip" hidden>⛰ Slope · key</button>
     <div id="drawbar" hidden>
       <div id="drawText"></div>
       <div id="drawHint"></div>
@@ -228,6 +229,7 @@
       <h3>Maps and layers</h3>
       <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b>, <b>Satellite + trails</b>, <b>Hybrid</b> or <b>Street</b>. <b>Satellite + trails</b> is the clear satellite photo with the Topo map's trails drawn in orange. <b>Hybrid</b> adds road and trail names and faint contour lines, but it shades public land such as wildlife refuges a pale white. Both have the same trails as Topo, not every path in the woods. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. <b>Parcel lines (Becker, Otter Tail)</b> draws property lines in yellow once you zoom in close. Tap inside a parcel to see the owner, acres and legal description from county tax records. The <b>tax year</b> shows how current that record is. Some Becker parcels are several years old, so check the county's own parcel search if the owner looks wrong. Parcel lines are approximate and are not a survey. <b>Lidar</b> shows the bare ground in fine detail (see <b>Lidar maps</b> below). The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo, Satellite, Satellite + trails and Hybrid can be saved for use offline. Satellite + trails takes about twice the space, since it saves two sets of images.</p>
       <p><b>Crops planted</b> under Layers colors every field by what was grown there, from the USDA Cropland Data Layer: yellow for corn, dark green for soybeans, pink for alfalfa, and so on. Zoom in to see it. A yellow <b>Crops</b> chip at the top opens the color key and lets you pick the year, back to 2008. The newest year is last season, and most fields rotate, so corn last year often means soybeans this year. It needs a signal and doesn't show in 3D.</p>
+      <p><b>Slope (gentle-terrain scale)</b> under Layers colors hillsides by how steep they are, from USGS lidar: yellow for a gentle rise through orange, red and purple to dark blue for the steepest ravine walls and lake banks. Flat ground stays clear, so benches, saddles and the flat tops of ridges stand out. A <b>Slope</b> chip at the top opens the key. Zoom in close; it is saved with offline maps and shows in 3D.</p>
 
       <h3>Adding pins</h3>
       <ul>
@@ -478,6 +480,16 @@
     </div>
   </section>
 
+  <section id="slopeSheet" class="sheet" hidden>
+    <h2>Slope</h2>
+    <p class="muted small">How steep the ground is, from USGS lidar. The scale is made for rolling country like Minnesota's: flat ground under 2° stays clear, so fields, swamps, benches and saddles show as gaps between the colored hillsides. Deer often travel the edges where color starts or stops, and bed on flat spots high on a slope. Zoomed out, steep spots blur and look gentler, so zoom in close.</p>
+    <ul id="slopeKey" class="cropkey onecol"></ul>
+    <div class="row">
+      <button id="btnSlopeOff">Turn slope off</button>
+      <button id="btnSlopeClose" class="primary">Close</button>
+    </div>
+  </section>
+
   <section id="windSheet" class="sheet" hidden>
     <h2 id="windTitle">Wind</h2>
     <div id="windNow" class="estimate"></div>
@@ -527,7 +539,7 @@
       </select>
     </label>
     <label class="check"><input id="offTerrain" type="checkbox" checked> Also save 3D terrain (hill heights for the 3D view)</label>
-    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save Minnesota public-land and parcel layers (WMAs, walk-in access, Becker &amp; Otter Tail parcels)</label>
+    <label class="check"><input id="offOverlays" type="checkbox" checked> Also save the slope, Minnesota public-land and parcel layers (WMAs, walk-in access, Becker &amp; Otter Tail parcels)</label>
     <div id="offEstimate" class="estimate"></div>
     <progress id="offProgress" value="0" max="1" hidden></progress>
     <div id="offStatus" class="muted"></div>
