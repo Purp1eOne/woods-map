@@ -47,6 +47,7 @@
   <div id="fab">
     <button id="fabTrack" class="fab" aria-label="Record my walk"><span class="fi">⏺</span><span id="fabTrackLbl">Track</span></button>
     <button id="fabCompass" class="fab" aria-label="Compass mode" aria-pressed="false"><span class="fi">🧭</span><span>Compass</span></button>
+    <button id="fab3d" class="fab" aria-label="3D map"><span class="fi">⛰</span><span>3D</span></button>
     <button id="fabTruck" class="fab" aria-label="Back to truck"><span class="fi">🛻</span><span>Truck</span></button>
   </div>
 
@@ -58,6 +59,34 @@
     <button id="cMark" class="primary">📍 Mark</button>
   </div>
   <div id="cAttr" hidden></div>
+
+  <section id="view3d" hidden aria-label="3D map">
+    <div id="map3d"></div>
+    <div id="v3top">
+      <button id="v3Close" class="v3btn">✕ 2D</button>
+      <select id="v3Base" aria-label="Map">
+        <option value="topo">Topo</option>
+        <option value="sat">Satellite</option>
+        <option value="trails">Satellite + trails</option>
+        <option value="hybrid">Hybrid</option>
+        <option value="street">Street</option>
+      </select>
+    </div>
+    <div id="v3panel">
+      <div class="v3row">
+        <span class="v3lbl">Hills</span>
+        <div id="v3Exag" class="seg" role="group" aria-label="Make hills taller">
+          <button data-x="1">1×</button><button data-x="1.5">1.5×</button><button data-x="2">2×</button><button data-x="3">3×</button>
+        </div>
+      </div>
+      <div class="v3row">
+        <button id="v3Shade" class="v3btn" aria-pressed="true">Shading</button>
+        <button id="v3Flat" class="v3btn">Look down</button>
+        <button id="v3Me" class="v3btn">◎ Me</button>
+      </div>
+    </div>
+    <div id="v3msg" hidden></div>
+  </section>
 
   <nav id="bar">
     <button id="btnLocate"><span class="ic">◎</span>Locate</button>
@@ -215,6 +244,7 @@
         <li>The <b>Truck</b> button starts Go there to your nearest pin of type Parking / truck.</li>
         <li>In <b>Pins</b>, <b>Measure</b> gives distance and time between any two points.</li>
         <li><b>Compass</b> on the right turns the map to face the way you do. See <b>Compass mode</b> below.</li>
+        <li><b>3D</b> on the right shows the land in 3D, to read ridges, saddles and draws. See <b>3D map</b> below.</li>
       </ul>
       <p>Times are straight-line at the pace you set under <b>More</b>. Brush, water and hills make a real walk longer, so use a slower pace for rough ground.</p>
 
@@ -248,6 +278,24 @@
       </ul>
       <p>Bearings are magnetic, like a hand compass. In Minnesota that is within about 2° of true north. In Illinois it is about 3° to 4° west. Compass mode works with no signal, since it only uses the phone's own sensors and GPS. Some phones have no compass. On those the strip says <b>No compass</b>, and the map turns to the direction you're walking once you start moving.</p>
 
+      <h3>3D map</h3>
+      <p>The 3D map shows the land in real hills and valleys, so ridges, saddles, benches, draws and funnels stand out. It's handy for planning a stand, an entry route or a stalk before you go.</p>
+      <ol>
+        <li>Move the 2D map to the spot you want, then tap <b>3D</b> on the right (the ⛰ button). The first time it takes a few seconds to load.</li>
+        <li>The map opens tilted. Drag with one finger to move around, and pinch to zoom.</li>
+        <li><b>Tilt:</b> put two fingers on the screen and slide them up or down together. <b>Turn:</b> twist two fingers. The arrow buttons at the top right also work. Tap the compass arrow there to face north again.</li>
+        <li>Tap <b>✕ 2D</b> at the top left to go back. The 2D map opens on the spot you were looking at.</li>
+      </ol>
+      <ul>
+        <li><b>Hills</b> makes the land taller: <b>1×</b> is true height, and <b>2×</b> or <b>3×</b> makes small rises easy to see. Most Minnesota and Illinois deer country is fairly flat, so 1.5× or 2× usually works best.</li>
+        <li><b>Shading</b> adds shadows to the slopes, as if the sun were low in the northwest. That makes ridges and draws pop, even on the satellite map.</li>
+        <li><b>Look down</b> flattens the view to straight overhead (and points north). Tap <b>Tilt</b> to tilt it again.</li>
+        <li><b>◎ Me</b> moves to where you are.</li>
+        <li>The menu at the top picks the map: Topo, Satellite, Satellite + trails, Hybrid or Street. The 2D map switches to match.</li>
+      </ul>
+      <p>Your pins, lines, areas, routes and walks all show in 3D, just as in 2D. Tap one for the usual buttons (Go there, Edit and so on), and press and hold the map to start a new pin. The public-land and parcel layers you have turned on in 2D also show. Pin types, groups or items you've hidden stay hidden.</p>
+      <p>Hill heights come from USGS elevation data (about 10 m detail), so they show the shape of the land, not single trees or small ditches. To use 3D with no signal, save the area under <b>More</b> &gt; <b>Offline maps</b> with <b>Also save 3D terrain</b> ticked. The 3D map needs a fairly recent phone; it works on most phones from the last several years.</p>
+
       <h3>Recording your walk</h3>
       <p>Tap <b>Track</b>, then <b>Start recording</b>. It records the path you walk so you can follow it back out. The screen stays on while it records, and it only records while the app is open. <b>Pause</b> stops counting while you sit, for example on stand. Saved walks show on the map as a dashed line and stay there until you hide them.</p>
       <p>Tap a walk in the list, or on the map, for its distance, total and moving time, average speed, climb and descent, and elevation profile. There you can rename it, pick a color, add notes, <b>Follow back</b> to the start, <b>Share</b> it as a GPX file, or <b>Save as a route</b> so you can follow the same path next time.</p>
@@ -265,6 +313,7 @@
       <ol>
         <li>Do this on wifi. Pan and zoom so the screen covers the area you hunt.</li>
         <li>Tap <b>More</b>, then <b>Offline maps</b>. Choose a map and a detail level, then <b>Download this area</b>.</li>
+        <li>Leave <b>Also save 3D terrain</b> ticked if you want the 3D map to work out there.</li>
         <li>Repeat for the other map if you want both.</li>
         <li>Turn on airplane mode and check that the map still shows.</li>
       </ol>
@@ -408,6 +457,7 @@
         <option value="16">Best (zoom 16, large)</option>
       </select>
     </label>
+    <label class="check"><input id="offTerrain" type="checkbox" checked> Also save 3D terrain (hill heights for the 3D view)</label>
     <label class="check"><input id="offOverlays" type="checkbox" checked> Also save Minnesota public-land and parcel layers (WMAs, walk-in access, Becker &amp; Otter Tail parcels)</label>
     <div id="offEstimate" class="estimate"></div>
     <progress id="offProgress" value="0" max="1" hidden></progress>

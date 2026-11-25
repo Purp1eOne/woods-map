@@ -1,5 +1,5 @@
 /* Woods Map service worker: app shell works offline, USGS map tiles are cached. */
-const SHELL = 'woods-shell-v25';
+const SHELL = 'woods-shell-v27';
 const TILES = 'woods-tiles-v1';
 const SHELL_FILES = [
   './',
@@ -9,6 +9,9 @@ const SHELL_FILES = [
   'manifest.webmanifest',
   'lib/leaflet.js',
   'lib/leaflet.css',
+  'lib/maplibre/maplibre-gl.mjs',
+  'lib/maplibre/maplibre-gl-worker.mjs',
+  'lib/maplibre/maplibre-gl.css',
   'lib/images/layers.png',
   'lib/images/layers-2x.png',
   'lib/images/marker-icon.png',
@@ -38,7 +41,9 @@ self.addEventListener('fetch', (e) => {
   // USGS tiles (topo, satellite, hybrid), DNR overlays and parcel-line images: cache first, then network (and remember what you looked at).
   // Only the parcel images are cached from MnGeo; its lookups (owners, deer seasons) must stay fresh.
   const parcelImg = url.hostname === 'enterprise.gisdata.mn.gov' && url.pathname.endsWith('/plan_parcels_open/MapServer/export');
-  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us' || parcelImg) {
+  // 3D hill heights (AWS Terrain Tiles) are cached the same way.
+  const demTile = url.hostname === 's3.amazonaws.com' && url.pathname.startsWith('/elevation-tiles-prod/');
+  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us' || parcelImg || demTile) {
     e.respondWith(
       caches.open(TILES).then(async (cache) => {
         const hit = await cache.match(req, { ignoreVary: true });

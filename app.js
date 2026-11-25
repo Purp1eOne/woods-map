@@ -266,28 +266,33 @@
       img.src = src;
     });
   }
+  // Draw one "Satellite + trails" square onto a 256px canvas. Resolves false if there's no satellite image.
+  // Used by the 2D map and the 3D view.
+  function blendTrailTile(tile, z, x, y) {
+    return Promise.allSettled([loadImg(tileUrl('sat', z, x, y)), loadImg(tileUrl('hybrid', z, x, y))]).then(([sat, topo]) => {
+      if (sat.status !== 'fulfilled') return false;
+      const ctx = tile.getContext('2d');
+      ctx.drawImage(sat.value, 0, 0);
+      if (topo.status === 'fulfilled') try {
+        // Keep only the trail pixels from the Hybrid image, on a transparent sheet.
+        const sheet = document.createElement('canvas');
+        sheet.width = sheet.height = 256;
+        const sctx = sheet.getContext('2d', { willReadFrequently: true });
+        sctx.drawImage(topo.value, 0, 0);
+        const px = sctx.getImageData(0, 0, 256, 256);
+        keepTrailLines(px.data);
+        sctx.putImageData(px, 0, 0);
+        // Draw it a few times, nudged by a pixel, to make the lines thicker and easier to see.
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) ctx.drawImage(sheet, dx, dy);
+      } catch (e) { /* image couldn't be read: show plain satellite for this square */ }
+      return true;
+    });
+  }
   const TrailBlend = L.GridLayer.extend({
     createTile(c, done) {
       const tile = document.createElement('canvas');
       tile.width = tile.height = 256;
-      Promise.allSettled([loadImg(tileUrl('sat', c.z, c.x, c.y)), loadImg(tileUrl('hybrid', c.z, c.x, c.y))]).then(([sat, topo]) => {
-        if (sat.status !== 'fulfilled') return done(new Error('no satellite tile'), tile);
-        const ctx = tile.getContext('2d');
-        ctx.drawImage(sat.value, 0, 0);
-        if (topo.status === 'fulfilled') try {
-          // Keep only the trail pixels from the Hybrid image, on a transparent sheet.
-          const sheet = document.createElement('canvas');
-          sheet.width = sheet.height = 256;
-          const sctx = sheet.getContext('2d', { willReadFrequently: true });
-          sctx.drawImage(topo.value, 0, 0);
-          const px = sctx.getImageData(0, 0, 256, 256);
-          keepTrailLines(px.data);
-          sctx.putImageData(px, 0, 0);
-          // Draw it a few times, nudged by a pixel, to make the lines thicker and easier to see.
-          for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) ctx.drawImage(sheet, dx, dy);
-        } catch (e) { /* image couldn't be read: show plain satellite for this square */ }
-        done(null, tile);
-      });
+      blendTrailTile(tile, c.z, c.x, c.y).then((ok) => done(ok ? null : new Error('no satellite tile'), tile));
       return tile;
     }
   });
@@ -401,6 +406,7 @@
   function closeSheets() {
     SHEETS.forEach((s) => { $(s).hidden = true; });
     $('backdrop').hidden = true;
+    document.dispatchEvent(new Event('sheetsclosed'));
   }
   $('backdrop').addEventListener('click', closeSheets);
 
@@ -1713,6 +1719,299 @@
     openEditor({ lat: p.lat, lng: p.lng, cat: 'buck', name: '', notes: 'Marked ' + markYd + ' yd ' + compass(h) + ' (' + h + '°) from where I stood.' }, true);
   });
 
+  // ---------- 3D view (like onX 3D Maps) ----------
+  // Leaflet can't tilt, so the 3D view is a second map drawn with MapLibre (loaded the first time it's
+  // opened). It drapes the same USGS map tiles over free elevation tiles (AWS Terrain Tiles, built from
+  // USGS 3DEP for the US; "terrarium" PNGs with the height packed into the colors). Pins, lines, areas,
+  // walks and routes are copied from whatever the 2D map is showing, so filters and hidden items match.
+  // Taps go back to the 2D map's own handlers, so popups, editors and parcel lookups work the same.
+  const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+  const DEM_MAX_ZOOM = 14; // about 7 m per pixel here; the source data is USGS 10 m elevation
+  const DEM_AVG_KB = 70;
+  const v3 = { on: false, ml: null, map: null, markers: new Map(), paths: [], me: null, popup: null, syncTimer: null, base: null };
+  const V3_STORE = { exag: 'woodsmap.3dExag.v1', shade: 'woodsmap.3dShade.v1' };
+  let v3Exag = +recall(V3_STORE.exag, 1.5) || 1.5;
+  let v3Shade = recall(V3_STORE.shade, true) !== false;
+  const mnBox = [MAP_BOUNDS.getWest(), MAP_BOUNDS.getSouth(), MAP_BOUNDS.getEast(), MAP_BOUNDS.getNorth()];
+
+  function baseKey() {
+    return Object.keys(layers).find((k) => map.hasLayer(layers[k])) || 'topo';
+  }
+  function v3Style(key) {
+    const src = (k) => k === 'trails'
+      ? { type: 'raster', tiles: ['woodstrails://{z}/{x}/{y}'], tileSize: 256, maxzoom: SOURCES.sat.maxNative, bounds: mnBox, attribution: SOURCES.sat.attr }
+      : Object.assign({ type: 'raster', tiles: [SOURCES[k].url], tileSize: 256, maxzoom: SOURCES[k].maxNative, attribution: SOURCES[k].attr }, k === 'street' ? {} : { bounds: mnBox });
+    const sources = {
+      base: src(key),
+      dem: { type: 'raster-dem', tiles: [DEM_URL], tileSize: 256, maxzoom: DEM_MAX_ZOOM, encoding: 'terrarium', attribution: 'Elevation: USGS 3DEP via AWS Terrain Tiles' },
+      // A second copy for the shading: MapLibre draws hills better when terrain and shading don't share a source.
+      demShade: { type: 'raster-dem', tiles: [DEM_URL], tileSize: 256, maxzoom: DEM_MAX_ZOOM, encoding: 'terrarium' },
+      paths: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
+    };
+    const lyrs = [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#d9dfd0' } },
+      { id: 'base', type: 'raster', source: 'base', paint: { 'raster-fade-duration': 100 } },
+      { id: 'shade', type: 'hillshade', source: 'demShade', layout: { visibility: v3Shade ? 'visible' : 'none' },
+        paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#2b2b2b', 'hillshade-highlight-color': '#ffffff', 'hillshade-illumination-direction': 315 } }
+    ];
+    // MN DNR public land and parcel layers: whichever are switched on in 2D. Same tile addresses as 2D, so saved ones work offline.
+    for (const [k, o] of Object.entries(OVERLAYS)) {
+      if (!map.hasLayer(overlayLayers[k])) continue;
+      const b = o.box.pad(0.1);
+      sources['ov_' + k] = { type: 'raster', tiles: ['woodsov://' + k + '/{z}/{x}/{y}'], tileSize: 256, minzoom: Math.max(0, (o.minZoom || 0)), maxzoom: 17, bounds: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], attribution: o.attr || 'MN DNR' };
+      lyrs.push({ id: 'ov_' + k, type: 'raster', source: 'ov_' + k, paint: { 'raster-opacity': o.opacity } });
+    }
+    lyrs.push(
+      { id: 'fill', type: 'fill', source: 'paths', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': ['get', 'fo'] } },
+      { id: 'line', type: 'line', source: 'paths', filter: ['!', ['get', 'dash']], layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': ['get', 'op'] } },
+      { id: 'lineDash', type: 'line', source: 'paths', filter: ['get', 'dash'], layout: { 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': ['get', 'op'], 'line-dasharray': [2, 1.5] } }
+    );
+    return {
+      version: 8,
+      sources,
+      layers: lyrs,
+      sky: { 'sky-color': '#9fc3e6', 'horizon-color': '#e4edf2', 'fog-color': '#e4edf2', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85 },
+      terrain: { source: 'dem', exaggeration: v3Exag }
+    };
+  }
+
+  async function loadMapLibre() {
+    if (v3.ml) return v3.ml;
+    if (!document.querySelector('link[href$="maplibre-gl.css"]')) {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'lib/maplibre/maplibre-gl.css';
+      document.head.appendChild(css);
+    }
+    const ml = await import('./lib/maplibre/maplibre-gl.mjs');
+    // "Satellite + trails" squares, built the same way as on the 2D map.
+    ml.addProtocol('woodstrails', async (params) => {
+      const [z, x, y] = params.url.replace('woodstrails://', '').split('/').map(Number);
+      const tile = document.createElement('canvas');
+      tile.width = tile.height = 256;
+      if (!(await blendTrailTile(tile, z, x, y))) throw new Error('no satellite tile');
+      return { data: await createImageBitmap(tile) };
+    });
+    // Public land and parcel squares: the exact addresses the 2D map uses, so the offline copies match.
+    ml.addProtocol('woodsov', async (params, abort) => {
+      const [k, z, x, y] = params.url.replace('woodsov://', '').split('/');
+      const res = await fetch(overlayTileUrl(OVERLAYS[k], +z, +x, +y), { signal: abort.signal });
+      if (!res.ok) throw new Error('overlay ' + res.status);
+      return { data: await res.arrayBuffer() };
+    });
+    v3.ml = ml;
+    return ml;
+  }
+
+  function hasWebGL() {
+    try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; }
+  }
+
+  async function open3D() {
+    if (v3.on) return;
+    if (draw) return toast('Finish or cancel drawing first.');
+    if (!hasWebGL()) return toast('This phone or browser can\'t draw 3D maps (no WebGL).', 5000);
+    if (cmp.on) stopCompass();
+    map.closePopup();
+    v3.on = true;
+    $('view3d').hidden = false;
+    $('v3msg').hidden = false;
+    $('v3msg').textContent = 'Loading 3D…';
+    let ml;
+    try { ml = await loadMapLibre(); } catch (e) {
+      v3.on = false;
+      $('view3d').hidden = true;
+      return toast('The 3D map could not load. Open the app once with a signal so it can save the 3D files.', 6000);
+    }
+    if (!v3.on) return; // closed while loading
+    v3.base = baseKey();
+    $('v3Base').value = v3.base;
+    const c = map.getCenter();
+    const m = new ml.Map({
+      container: 'map3d',
+      style: v3Style(v3.base),
+      center: [c.lng, c.lat],
+      zoom: Math.max(map.getZoom() - 1, 11), // MapLibre counts zoom one lower than Leaflet for the same scale
+      pitch: 60,
+      bearing: 0,
+      maxPitch: 80,
+      minZoom: 6,
+      maxZoom: 17.5,
+      maxBounds: [[mnBox[0] - 2, mnBox[1] - 1.5], [mnBox[2] + 2, mnBox[3] + 1.5]],
+      attributionControl: { compact: true },
+      fadeDuration: 0
+    });
+    v3.map = m;
+    m.addControl(new ml.NavigationControl({ visualizePitch: true }), 'top-right');
+    m.addControl(new ml.ScaleControl({ unit: 'imperial' }), 'bottom-left');
+    m.on('pitchend', () => { $('v3Flat').textContent = m.getPitch() < 5 ? 'Tilt' : 'Look down'; });
+    m.on('load', () => {
+      $('v3msg').hidden = true;
+      const attr = m.getContainer().querySelector('.maplibregl-ctrl-attrib');
+      if (attr) attr.classList.remove('maplibregl-compact-show'); // start folded: just the ⓘ button
+      sync3D();
+      if (!recall('woodsmap.3dTip.v1', false)) {
+        store('woodsmap.3dTip.v1', true);
+        toast('Drag two fingers up or down to tilt. Twist two fingers to turn. Pinch to zoom.', 6000);
+      }
+    });
+    m.on('error', (e) => { if (e && e.error && /dem|terrarium/i.test(String(e.sourceId || '') + e.error.message)) toast('Hill heights need a signal here, or save this area under Offline maps.', 5000); });
+    // Taps: pins, lines, areas and walks open the same popup as in 2D; elsewhere the 2D map's own tap handlers run.
+    m.on('click', (e) => {
+      const r = 8, p = e.point;
+      const hit = m.queryRenderedFeatures([[p.x - r, p.y - r], [p.x + r, p.y + r]], { layers: ['line', 'lineDash', 'fill'] })
+        .map((f) => v3.paths[f.properties.i]).find((l) => l && l.options.interactive !== false);
+      const latlng = L.latLng(e.lngLat.lat, e.lngLat.lng);
+      if (hit) hit.fire('click', { latlng, originalEvent: e.originalEvent });
+      else map.fire('click', { latlng, originalEvent: { target: document.body } });
+    });
+    m.on('contextmenu', (e) => map.fire('contextmenu', { latlng: L.latLng(e.lngLat.lat, e.lngLat.lng) }));
+    setExagButtons();
+    $('v3Shade').setAttribute('aria-pressed', String(v3Shade));
+  }
+
+  function close3D() {
+    if (!v3.on) return;
+    v3.on = false;
+    const m = v3.map;
+    if (m) {
+      const c = m.getCenter();
+      map.setView([c.lat, c.lng], Math.min(18, Math.round(m.getZoom() + 1)), { animate: false });
+      if (v3.popup) v3.popup.remove();
+      m.remove();
+    }
+    v3.map = null; v3.popup = null; v3.me = null;
+    v3.markers.clear();
+    v3.paths = [];
+    $('view3d').hidden = true;
+  }
+
+  // Copy what the 2D map shows. Markers are kept between syncs and only moved, so they don't flicker.
+  function circleRing(ll, radius) {
+    const ring = [];
+    for (let i = 0; i <= 64; i++) { const q = destPoint({ lat: ll.lat, lng: ll.lng }, i * 360 / 64, radius); ring.push([q.lng, q.lat]); }
+    return ring;
+  }
+  function sync3D() {
+    const m = v3.map;
+    if (!v3.on || !m || !m.getSource('paths')) return;
+    const features = [], seen = new Set();
+    v3.paths = [];
+    map.eachLayer((l) => {
+      if (l === meAcc || l === meDot) return;
+      if (l instanceof L.Marker) {
+        if (!(l.options.icon instanceof L.DivIcon) && !(l.options.icon instanceof L.Icon)) return;
+        seen.add(l);
+        const ll = l.getLatLng();
+        let rec = v3.markers.get(l);
+        if (rec && rec.icon !== l.options.icon) { rec.mk.remove(); rec = null; }
+        if (!rec) {
+          const el = l.options.icon.createIcon(); // same element as 2D, with the same anchor (its margins)
+          el.style.position = 'absolute';
+          if (l.getPopup()) {
+            el.classList.add('leaflet-interactive'); // Leaflet's CSS only lets taps through on interactive icons
+            el.addEventListener('click', (ev) => { ev.stopPropagation(); l.openPopup(); });
+          }
+          const mk = new v3.ml.Marker({ element: el, anchor: 'top-left' }).setLngLat([ll.lng, ll.lat]).addTo(m);
+          rec = { mk, icon: l.options.icon };
+          v3.markers.set(l, rec);
+        } else rec.mk.setLngLat([ll.lng, ll.lat]);
+        return;
+      }
+      if (!(l instanceof L.Path)) return;
+      const o = l.options, i = v3.paths.push(l) - 1;
+      const props = { i, color: o.color || '#3388ff', w: o.weight || 3, op: o.opacity == null ? 1 : o.opacity, dash: !!o.dashArray, fill: o.fillColor || o.color || '#3388ff', fo: o.fill === false ? 0 : (o.fillOpacity == null ? 0.2 : o.fillOpacity) };
+      let geom = null;
+      if (l instanceof L.Circle) geom = { type: 'Polygon', coordinates: [circleRing(l.getLatLng(), l.getRadius())] };
+      else if (l instanceof L.Polyline) {
+        const gj = l.toGeoJSON();
+        geom = gj && gj.geometry;
+        if (!(l instanceof L.Polygon)) props.fo = 0;
+      }
+      if (geom) features.push({ type: 'Feature', geometry: geom, properties: props });
+    });
+    for (const [l, rec] of v3.markers) if (!seen.has(l)) { rec.mk.remove(); v3.markers.delete(l); }
+    m.getSource('paths').setData({ type: 'FeatureCollection', features });
+    // You: the blue dot.
+    if (me) {
+      if (!v3.me) {
+        const el = document.createElement('div');
+        el.className = 'me-dot';
+        v3.me = new v3.ml.Marker({ element: el }).setLngLat([me.lng, me.lat]).addTo(m);
+      } else v3.me.setLngLat([me.lng, me.lat]);
+    }
+  }
+  const sync3DSoon = () => { if (!v3.on) return; clearTimeout(v3.syncTimer); v3.syncTimer = setTimeout(sync3D, 60); };
+  map.on('layeradd layerremove', sync3DSoon);
+  document.addEventListener('sheetsclosed', sync3DSoon);
+
+  // A 2D popup opening while 3D is up (a tapped pin, line, walk or parcel) is shown in 3D instead.
+  map.on('popupopen', (e) => {
+    if (!v3.on || !v3.map) return;
+    const pop = e.popup;
+    let content = pop.getContent();
+    if (typeof content === 'function') content = content(pop._source || pop);
+    const ll = pop.getLatLng();
+    map.closePopup(pop);
+    if (v3.popup) v3.popup.remove();
+    const p = new v3.ml.Popup({ maxWidth: '300px', offset: pop._source instanceof L.Marker ? [0, -40] : 8 }).setLngLat([ll.lng, ll.lat]);
+    if (typeof content === 'string') p.setHTML(content); else p.setDOMContent(content);
+    p.addTo(v3.map);
+    // A button in the popup (Go there, Edit, Hide…) acts on the pins; close and refresh the 3D copy afterwards.
+    p.getElement().addEventListener('click', (ev) => {
+      if (ev.target.closest('button')) setTimeout(() => { if (v3.popup === p) { p.remove(); v3.popup = null; } sync3D(); }, 50);
+    });
+    v3.popup = p;
+  });
+
+  function setExagButtons() {
+    document.querySelectorAll('#v3Exag button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.x === v3Exag)));
+  }
+  $('v3Exag').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    v3Exag = +b.dataset.x;
+    store(V3_STORE.exag, v3Exag);
+    setExagButtons();
+    if (v3.map) v3.map.setTerrain({ source: 'dem', exaggeration: v3Exag });
+  });
+  $('v3Shade').addEventListener('click', () => {
+    v3Shade = !v3Shade;
+    store(V3_STORE.shade, v3Shade);
+    $('v3Shade').setAttribute('aria-pressed', String(v3Shade));
+    if (v3.map) v3.map.setLayoutProperty('shade', 'visibility', v3Shade ? 'visible' : 'none');
+  });
+  $('v3Base').addEventListener('change', (e) => {
+    const k = e.target.value;
+    // Switch the 2D map too, so both match when you go back.
+    Object.values(layers).forEach((l) => { if (map.hasLayer(l)) map.removeLayer(l); });
+    layers[k].addTo(map);
+    store(STORE.layer, k);
+    v3.base = k;
+    if (!v3.map) return;
+    if (v3.popup) { v3.popup.remove(); v3.popup = null; }
+    v3.map.setStyle(v3Style(k));
+    v3.map.once('style.load', () => {
+      // Markers stay on the map; the lines and areas live in the style, so they're copied in again.
+      v3.map.setTerrain({ source: 'dem', exaggeration: v3Exag });
+      sync3D();
+    });
+  });
+  $('v3Flat').addEventListener('click', () => {
+    if (!v3.map) return;
+    const flat = v3.map.getPitch() < 5;
+    v3.map.easeTo({ pitch: flat ? 60 : 0, bearing: flat ? v3.map.getBearing() : 0, duration: 700 });
+  });
+  $('v3Me').addEventListener('click', () => {
+    if (!me) {
+      if (watchId === null) startGPS();
+      return toast('Finding you…');
+    }
+    if (v3.map) v3.map.easeTo({ center: [me.lng, me.lat], zoom: Math.max(v3.map.getZoom(), 14.5), duration: 800 });
+  });
+  $('fab3d').addEventListener('click', open3D);
+  $('v3Close').addEventListener('click', close3D);
+
   // ---------- GPS ----------
   let me = null, watchId = null, meDot = null, meAcc = null, centerOnFix = false;
 
@@ -1739,6 +2038,7 @@
     }
     compassOnPos(pos);
     updateNav();
+    sync3DSoon();
     addTrackPoint(lat, lng, accuracy);
     if (!firstFix) { firstFix = true; updateSunChip(); }
     if (pendingTruck) { pendingTruck = false; goTruck(); }
@@ -1912,6 +2212,9 @@
     return total;
   }
 
+  // 3D hill heights: only up to DEM_MAX_ZOOM, since the 3D view never asks for closer ones.
+  const demTileUrl = (z, x, y) => DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  const terrainTileCount = (a, zMax) => countTiles(a, Math.min(zMax, DEM_MAX_ZOOM));
   function overlayTileCount(a, zMax) {
     return countTiles(a, Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM)) * Object.keys(OVERLAYS).length;
   }
@@ -1926,7 +2229,8 @@
     }
     const zMax = +$('offZoom').value;
     const n = countTiles(a, zMax) * ($('offLayer').value === 'trails' ? TRAIL_PARTS.length : 1);
-    const extra = $('offOverlays').checked ? overlayTileCount(a, zMax) * OVERLAY_AVG_KB : 0;
+    const extra = ($('offOverlays').checked ? overlayTileCount(a, zMax) * OVERLAY_AVG_KB : 0) +
+      ($('offTerrain').checked ? terrainTileCount(a, zMax) * DEM_AVG_KB : 0);
     const mb = Math.round((n * AVG_KB + extra) / 1024);
     if (n > MAX_TILES) {
       $('offEstimate').textContent = 'Too big (about ' + mb + ' MB). Zoom the map in, or pick a lower detail level.';
@@ -1946,12 +2250,13 @@
       const sat = keys.filter((k) => k.url.includes('USGSImageryOnly')).length;
       const dnr = keys.filter((k) => k.url.includes('gis.dnr.state.mn.us') || k.url.includes('plan_parcels_open')).length;
       const hybrid = keys.filter((k) => k.url.includes('USGSImageryTopo')).length;
+      const dem = keys.filter((k) => k.url.includes('/terrarium/')).length;
       let extra = '';
       if (navigator.storage && navigator.storage.estimate) {
         const est = await navigator.storage.estimate();
         extra = ' · phone storage used by app: ' + Math.round((est.usage || 0) / 1048576) + ' MB';
       }
-      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + dnr.toLocaleString() + ' public-land & parcel tiles' + extra;
+      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + dnr.toLocaleString() + ' public-land & parcel, ' + dem.toLocaleString() + ' 3D terrain tiles' + extra;
     } catch (e) {
       $('offStored').textContent = '';
     }
@@ -1995,6 +2300,13 @@
       else try { const probe = await fetch(ovUrls[0], { mode: 'cors' }); ok = probe.ok; } catch (e) { ok = false; }
       if (ok) urls.push(...ovUrls);
       else toast('The state server would not let me save its public-land and parcel layers. Saving the base map only.', 6000);
+    }
+
+    if ($('offTerrain').checked) {
+      for (let z = 8; z <= Math.min(zMax, DEM_MAX_ZOOM); z++) {
+        const r = tileRange(a, z);
+        for (let x = r.x0; x <= r.x1; x++) for (let y = r.y0; y <= r.y1; y++) urls.push(demTileUrl(z, x, y));
+      }
     }
 
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -2057,6 +2369,7 @@
   $('offLayer').addEventListener('change', updateEstimate);
   $('offZoom').addEventListener('change', updateEstimate);
   $('offOverlays').addEventListener('change', updateEstimate);
+  $('offTerrain').addEventListener('change', updateEstimate);
   $('btnOffDownload').addEventListener('click', downloadArea);
   $('btnOffCancel').addEventListener('click', () => { off.abort = true; });
   $('btnOffClear').addEventListener('click', async () => {
