@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', compassYd: 'woodsmap.compassYd.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', pinFilter: 'woodsmap.pinFilter.v1', pinSort: 'woodsmap.pinSort.v1', dpa: 'woodsmap.dpa.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', compassYd: 'woodsmap.compassYd.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', pinFilter: 'woodsmap.pinFilter.v1', pinSort: 'woodsmap.pinSort.v1', cropYear: 'woodsmap.cropYear.v1', dpa: 'woodsmap.dpa.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -356,19 +356,99 @@
       zIndex: o.zIndex || 5
     });
   }
+  // Crops (like onX's Crop Data Layers): the USDA Cropland Data Layer, about 30 m detail, one map per year.
+  // It comes from CropScape (George Mason University for USDA NASS) as WMS images. That server doesn't
+  // offer web-map squares (EPSG:3857), so each square is asked for by latitude and longitude instead; at
+  // these zoom levels the difference is well under a pixel. It isn't in OVERLAYS because the server doesn't
+  // allow the cross-site reads that offline saving and the 3D view need, so it is online and 2D only.
+  const CROP_URL = 'https://nassgeodata.gmu.edu/CropScapeService/wms_cdlall.cgi';
+  const CROP_LATEST = 2025, CROP_FIRST = 2008;
+  let cropYear = +recall(STORE.cropYear, CROP_LATEST);
+  if (!(cropYear >= CROP_FIRST && cropYear <= CROP_LATEST)) cropYear = CROP_LATEST;
+  const mercLat = (y) => (2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * 180 / Math.PI;
+  const CropLayer = L.TileLayer.extend({
+    getTileUrl(c) {
+      const z = this._getZoomForUrl(), res = (MERC * 2) / Math.pow(2, z);
+      const x0 = -MERC + c.x * res, y1 = MERC - c.y * res;
+      const lon = (m) => (m / MERC * 180).toFixed(6);
+      const bbox = [lon(x0), mercLat(y1 - res).toFixed(6), lon(x0 + res), mercLat(y1).toFixed(6)].join(',');
+      return CROP_URL + '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=cdl_' + cropYear + '&STYLES=&SRS=EPSG:4326&BBOX=' + bbox +
+        '&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true';
+    }
+  });
+  overlayLayers.crops = new CropLayer('', {
+    attribution: 'Crops: USDA NASS Cropland Data Layer',
+    minZoom: 10,
+    maxZoom: 18,
+    bounds: MN.pad(0.1),
+    opacity: 0.65,
+    zIndex: 3
+  });
   recall(STORE.overlays, []).forEach((k) => { if (overlayLayers[k]) overlayLayers[k].addTo(map); });
   const overlayControl = {};
   for (const [key, o] of Object.entries(OVERLAYS)) overlayControl[o.name] = overlayLayers[key];
+  overlayControl['Crops planted (USDA, pick the year)'] = overlayLayers.crops;
   const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Satellite + trails': layers.trails, 'Hybrid (names, contours)': layers.hybrid, 'Lidar (shaded relief)': layers.lidar, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
   const saveOverlays = () => store(STORE.overlays, Object.keys(overlayLayers).filter((k) => map.hasLayer(overlayLayers[k])));
   map.on('overlayadd', saveOverlays);
   map.on('overlayremove', saveOverlays);
+
+  // ---------- Crop color key ----------
+  // USDA's own Cropland Data Layer colors (checked against the service's legend image). The crops are the
+  // ones grown in Minnesota and Illinois; other crops are rare here and left out to keep the key short.
+  const CROP_KEY = [
+    ['#ffd400', 'Corn'], ['#267300', 'Soybeans'], ['#d9b56c', 'Spring wheat'], ['#a87000', 'Winter wheat'],
+    ['#737300', 'Winter wheat, then soybeans'], ['#a15889', 'Oats'], ['#e2007f', 'Barley'], ['#ae017e', 'Rye'],
+    ['#ffa8e3', 'Alfalfa'], ['#a5f58d', 'Other hay'], ['#e8beff', 'Clover and wildflowers'], ['#b2ffde', 'Sod and grass seed'],
+    ['#a900e5', 'Sugarbeets'], ['#ffff00', 'Sunflower'], ['#a80000', 'Dry beans'], ['#732600', 'Potatoes'],
+    ['#d1ff00', 'Canola'], ['#e0a60f', 'Sweet corn'], ['#55ff00', 'Peas'], ['#8099ff', 'Flaxseed'],
+    ['#ff9e0f', 'Sorghum'], ['#73004c', 'Millet'], ['#ff6666', 'Vegetables and melons'], ['#bfbf7a', 'Fallow or idle cropland']
+  ];
+  const CROP_OTHER = [
+    ['#e9ffbe', 'Grass and pasture'], ['#95ce93', 'Woods'], ['#c7d79e', 'Brush'], ['#80b3b3', 'Wetlands'],
+    ['#4d70a3', 'Open water'], ['#9c9c9c', 'Roads, yards and towns'], ['#ccbfa3', 'Bare ground']
+  ];
+  function fillCropKey(ul, list) {
+    ul.replaceChildren(...list.map(([c, name]) => {
+      const li = document.createElement('li');
+      const sw = document.createElement('span');
+      sw.className = 'cropsw';
+      sw.style.background = c;
+      li.append(sw, name);
+      return li;
+    }));
+  }
+  fillCropKey($('cropKey'), CROP_KEY);
+  fillCropKey($('cropKeyOther'), CROP_OTHER);
+  for (let y = CROP_LATEST; y >= CROP_FIRST; y--) {
+    const o = document.createElement('option');
+    o.value = y;
+    o.textContent = y + (y === CROP_LATEST ? ' (newest)' : '');
+    $('cropYear').appendChild(o);
+  }
+  $('cropYear').value = cropYear;
+  function syncCropChip() {
+    $('cropChip').hidden = !map.hasLayer(overlayLayers.crops);
+    $('cropChip').textContent = '🌽 Crops ' + cropYear + ' · key';
+  }
+  map.on('overlayadd overlayremove', syncCropChip);
+  syncCropChip();
+  $('cropChip').addEventListener('click', () => showSheet('cropSheet'));
+  $('cropYear').addEventListener('change', () => {
+    cropYear = +$('cropYear').value;
+    store(STORE.cropYear, cropYear);
+    overlayLayers.crops.redraw();
+    syncCropChip();
+  });
+  $('btnCropOff').addEventListener('click', () => { map.removeLayer(overlayLayers.crops); saveOverlays(); syncCropChip(); closeSheets(); });
+  $('btnCropClose').addEventListener('click', closeSheets);
 
   // ---------- Parcels: tap one to see who owns it (Becker and Otter Tail only) ----------
   const escHtml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
   map.on('overlayadd', (e) => {
     if (e.layer === overlayLayers.parcels && map.getZoom() < OVERLAYS.parcels.minZoom) toast('Zoom in closer to see parcel lines. Tap a parcel to see its owner.', 4000);
     if (e.layer === overlayLayers.lidar && map.getZoom() < OVERLAYS.lidar.minZoom) toast('Zoom in closer to see the lidar shading.', 4000);
+    if (e.layer === overlayLayers.crops) toast((map.getZoom() < 10 ? 'Zoom in closer to see crops. ' : '') + 'Tap the Crops chip at the top for the color key and the year.', 5000);
   });
   let parcelAsk = 0;
   map.on('click', async (e) => {
@@ -433,7 +513,7 @@
   updateCoords();
 
   // ---------- Sheets ----------
-  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet', 'windSheet'];
+  const SHEETS = ['editor', 'shapeEditor', 'trackDetail', 'pinsSheet', 'insightsSheet', 'offlineSheet', 'moreSheet', 'measureSheet', 'sunSheet', 'trackSheet', 'gotoSheet', 'helpSheet', 'windSheet', 'cropSheet'];
   function showSheet(id) {
     if (id !== 'trackDetail') clearTrim(); // the trim preview belongs to the walk details only
     SHEETS.forEach((s) => { $(s).hidden = s !== id; });

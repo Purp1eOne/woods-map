@@ -31,6 +31,7 @@
       <div id="cRead"><span id="cDeg">—</span><span id="cNote"></span></div>
     </div>
     <button id="filterChip" hidden></button>
+    <button id="cropChip" hidden></button>
     <div id="drawbar" hidden>
       <div id="drawText"></div>
       <div id="drawHint"></div>
@@ -226,6 +227,7 @@
 
       <h3>Maps and layers</h3>
       <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b>, <b>Satellite + trails</b>, <b>Hybrid</b> or <b>Street</b>. <b>Satellite + trails</b> is the clear satellite photo with the Topo map's trails drawn in orange. <b>Hybrid</b> adds road and trail names and faint contour lines, but it shades public land such as wildlife refuges a pale white. Both have the same trails as Topo, not every path in the woods. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. <b>Parcel lines (Becker, Otter Tail)</b> draws property lines in yellow once you zoom in close. Tap inside a parcel to see the owner, acres and legal description from county tax records. The <b>tax year</b> shows how current that record is. Some Becker parcels are several years old, so check the county's own parcel search if the owner looks wrong. Parcel lines are approximate and are not a survey. <b>Lidar</b> shows the bare ground in fine detail (see <b>Lidar maps</b> below). The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo, Satellite, Satellite + trails and Hybrid can be saved for use offline. Satellite + trails takes about twice the space, since it saves two sets of images.</p>
+      <p><b>Crops planted</b> under Layers colors every field by what was grown there, from the USDA Cropland Data Layer: yellow for corn, dark green for soybeans, pink for alfalfa, and so on. Zoom in to see it. A yellow <b>Crops</b> chip at the top opens the color key and lets you pick the year, back to 2008. The newest year is last season, and most fields rotate, so corn last year often means soybeans this year. It needs a signal and doesn't show in 3D.</p>
 
       <h3>Adding pins</h3>
       <ul>
@@ -457,6 +459,22 @@
       <button id="btnTdRoute">Save as a route</button>
       <button id="btnTdBack">Back</button>
       <button id="btnTdDelete" class="danger">Delete</button>
+    </div>
+  </section>
+
+  <section id="cropSheet" class="sheet" hidden>
+    <h2>Crops planted</h2>
+    <label>Year
+      <select id="cropYear"></select>
+    </label>
+    <p class="muted small">Each color is one crop, the same in every year. Most fields rotate, so corn last year often means soybeans this year, and the other way round. Look back a few years to see a field's pattern. From the USDA Cropland Data Layer, mapped from satellite at about 30 m (100 ft), so field edges are blocky and a few spots are wrong. It needs a signal and doesn't show in 3D.</p>
+    <h3 class="listhead">Crops</h3>
+    <ul id="cropKey" class="cropkey"></ul>
+    <h3 class="listhead">Not crops</h3>
+    <ul id="cropKeyOther" class="cropkey"></ul>
+    <div class="row">
+      <button id="btnCropOff">Turn crops off</button>
+      <button id="btnCropClose" class="primary">Close</button>
     </div>
   </section>
 
