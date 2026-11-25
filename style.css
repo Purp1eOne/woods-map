@@ -693,3 +693,7 @@ body.drawing #compassBar, body.drawing #compassHud { display: none; }
 #map3d .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--panel); }
 #map3d .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--panel); }
 #map3d .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--panel); }
+
+/* Lidar shading over another map: flat ground is lifted to white, so multiplying leaves it as it is
+   and only the slopes, ditches and banks darken the map underneath */
+.lidar-blend { mix-blend-mode: multiply; filter: brightness(1.15); }

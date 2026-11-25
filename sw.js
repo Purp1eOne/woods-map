@@ -1,5 +1,5 @@
 /* Woods Map service worker: app shell works offline, USGS map tiles are cached. */
-const SHELL = 'woods-shell-v27';
+const SHELL = 'woods-shell-v28';
 const TILES = 'woods-tiles-v1';
 const SHELL_FILES = [
   './',
@@ -43,7 +43,9 @@ self.addEventListener('fetch', (e) => {
   const parcelImg = url.hostname === 'enterprise.gisdata.mn.gov' && url.pathname.endsWith('/plan_parcels_open/MapServer/export');
   // 3D hill heights (AWS Terrain Tiles) are cached the same way.
   const demTile = url.hostname === 's3.amazonaws.com' && url.pathname.startsWith('/elevation-tiles-prod/');
-  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us' || parcelImg || demTile) {
+  // Lidar shaded relief squares from USGS 3DEP (not its elevation lookups, which must stay fresh).
+  const lidarTile = url.hostname === 'elevation.nationalmap.gov' && url.pathname.endsWith('/3DEPElevation/ImageServer/exportImage');
+  if (url.hostname === 'basemap.nationalmap.gov' || url.hostname === 'gis.dnr.state.mn.us' || parcelImg || demTile || lidarTile) {
     e.respondWith(
       caches.open(TILES).then(async (cache) => {
         const hit = await cache.match(req, { ignoreVary: true });

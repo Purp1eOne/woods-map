@@ -69,6 +69,7 @@
         <option value="sat">Satellite</option>
         <option value="trails">Satellite + trails</option>
         <option value="hybrid">Hybrid</option>
+        <option value="lidar">Lidar</option>
         <option value="street">Street</option>
       </select>
     </div>
@@ -212,7 +213,7 @@
       <p>Open the app on wifi and allow location when it asks. Tap <b>Locate</b> at the bottom left. The blue dot is you. The pale circle around it shows how accurate the GPS is. It is smaller in the open than in thick woods.</p>
 
       <h3>Maps and layers</h3>
-      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b>, <b>Satellite + trails</b>, <b>Hybrid</b> or <b>Street</b>. <b>Satellite + trails</b> is the clear satellite photo with the Topo map's trails drawn in orange. <b>Hybrid</b> adds road and trail names and faint contour lines, but it shades public land such as wildlife refuges a pale white. Both have the same trails as Topo, not every path in the woods. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. <b>Parcel lines (Becker, Otter Tail)</b> draws property lines in yellow once you zoom in close. Tap inside a parcel to see the owner, acres and legal description from county tax records. The <b>tax year</b> shows how current that record is. Some Becker parcels are several years old, so check the county's own parcel search if the owner looks wrong. Parcel lines are approximate and are not a survey. The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo, Satellite, Satellite + trails and Hybrid can be saved for use offline. Satellite + trails takes about twice the space, since it saves two sets of images.</p>
+      <p>Tap <b>Layers</b> at the top right and pick <b>Topo</b> (contour lines), <b>Satellite</b>, <b>Satellite + trails</b>, <b>Hybrid</b> or <b>Street</b>. <b>Satellite + trails</b> is the clear satellite photo with the Topo map's trails drawn in orange. <b>Hybrid</b> adds road and trail names and faint contour lines, but it shades public land such as wildlife refuges a pale white. Both have the same trails as Topo, not every path in the woods. Switch on <b>MN DNR public land</b> to see Minnesota Wildlife Management Areas, or <b>MN walk-in access</b> for southwest Minnesota. <b>Parcel lines (Becker, Otter Tail)</b> draws property lines in yellow once you zoom in close. Tap inside a parcel to see the owner, acres and legal description from county tax records. The <b>tax year</b> shows how current that record is. Some Becker parcels are several years old, so check the county's own parcel search if the owner looks wrong. Parcel lines are approximate and are not a survey. <b>Lidar</b> shows the bare ground in fine detail (see <b>Lidar maps</b> below). The map covers Minnesota and Illinois; Illinois has the same Topo, Satellite and Street maps but no public-land overlay yet. Street needs a signal. Topo, Satellite, Satellite + trails and Hybrid can be saved for use offline. Satellite + trails takes about twice the space, since it saves two sets of images.</p>
 
       <h3>Adding pins</h3>
       <ul>
@@ -277,6 +278,16 @@
         <li>Check it against a real compass now and then if you're relying on it.</li>
       </ul>
       <p>Bearings are magnetic, like a hand compass. In Minnesota that is within about 2° of true north. In Illinois it is about 3° to 4° west. Compass mode works with no signal, since it only uses the phone's own sensors and GPS. Some phones have no compass. On those the strip says <b>No compass</b>, and the map turns to the direction you're walking once you start moving.</p>
+
+      <h3>Lidar maps</h3>
+      <p>Lidar is elevation measured by laser from an airplane, accurate to a few inches and detailed to about 1 yard. Shaded, it shows the shape of the ground with the trees taken away: ditches, creek bottoms, benches, saddles, old logging roads and fence lines, small rises in a flat field, and the edges of swamps. That's where deer travel and bed, and most of it can't be seen on a topo map or satellite photo. It covers all of Minnesota and Illinois.</p>
+      <p>There are two ways to see it. Tap <b>Layers</b> at the top right:</p>
+      <ul>
+        <li><b>Lidar (shaded relief)</b> is a map of its own: the bare ground in gray, lit from several sides. Flat ground is white and every slope, bank and ditch shows as a shadow.</li>
+        <li><b>Lidar shading (over any map)</b> is a layer you switch on over Satellite, Topo or any other map. It darkens the slopes and leaves flat ground alone, so you see the ground's shape and the photo at once. It only shows once you zoom in past county level.</li>
+      </ul>
+      <p>Both work in the <b>3D</b> view: pick <b>Lidar</b> in its map menu, or turn on the shading layer before opening 3D. Slopes are drawn steeper than they really are so small features stand out, so a gentle rise can look like a sharp bank. Check the topo lines or the 3D view for real steepness.</p>
+      <p>USGS draws each lidar square on request, so it can take a few seconds to fill in, longer when their server is busy. Squares you've looked at are kept for next time. To use lidar with no signal, choose <b>Lidar shaded relief</b> under <b>More</b> &gt; <b>Offline maps</b>. That download is slower than the other maps. The shading layer uses the same saved squares.</p>
 
       <h3>3D map</h3>
       <p>The 3D map shows the land in real hills and valleys, so ridges, saddles, benches, draws and funnels stand out. It's handy for planning a stand, an entry route or a stalk before you go.</p>
@@ -448,6 +459,7 @@
         <option value="sat">Satellite</option>
         <option value="trails">Satellite + trails (twice the space)</option>
         <option value="hybrid">Hybrid (names, contours)</option>
+        <option value="lidar">Lidar shaded relief (slow to save)</option>
       </select>
     </label>
     <label>Detail level

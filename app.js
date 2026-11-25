@@ -40,6 +40,14 @@
       attr: 'USGS The National Map',
       maxNative: 16
     },
+    // Lidar shaded relief: USGS 3DEP elevation (1 m lidar across Minnesota and Illinois), shaded by USGS's
+    // server. It isn't pre-cut into tiles, so each square is asked for by its box (see lidarTileUrl).
+    lidar: {
+      name: 'Lidar',
+      export: true,
+      attr: 'Lidar: USGS 3DEP',
+      maxNative: 17
+    },
     street: {
       name: 'Street',
       url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -53,6 +61,20 @@
   // MN DNR public land overlays. These are dynamic ArcGIS map services (not pre-cut tiles),
   // so each 256px tile is requested as a small transparent image for one web-mercator box.
   const OVERLAYS = {
+    // The lidar relief laid over any map. Multiply blending darkens slopes and leaves flat ground alone,
+    // so the satellite photo or topo stays readable underneath. Saved offline with the Lidar map, not here.
+    lidar: {
+      name: 'Lidar shading (over any map)',
+      tileUrl: (z, x, y) => lidarTileUrl(z, x, y),
+      box: MN,
+      opacity: 0.8,
+      opacity3d: 0.35,
+      minZoom: 11,
+      attr: 'Lidar: USGS 3DEP',
+      className: 'lidar-blend',
+      zIndex: 4,
+      noSave: true
+    },
     wma: {
       name: 'MN DNR public land (WMAs)',
       url: 'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_wildlife_mgmt_areas_pub/MapServer',
@@ -86,6 +108,7 @@
   const OVERLAY_AVG_KB = 3;
   const MERC = 20037508.342789244;
   function overlayTileUrl(o, z, x, y) {
+    if (o.tileUrl) return o.tileUrl(z, x, y);
     const res = (MERC * 2) / Math.pow(2, z);
     const x0 = -MERC + x * res;
     const y1 = MERC - y * res;
@@ -93,6 +116,20 @@
     // layers=show:0 is required: the WMA layer is switched off by default on the server.
     return o.url + '/export?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
       '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true' + (o.params || '&layers=show:0') + '&f=image';
+  }
+
+  const LIDAR_URL = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';
+  // Shading lit from several directions at once, with slopes drawn 8 times steeper, so small dips, ditches,
+  // benches and old roads show on flat ground while steep bluffs don't go solid black. Flat ground comes out
+  // near white. The same settings for every square, so neighbouring squares match (a per-square contrast
+  // stretch left visible seams).
+  const LIDAR_RULE = encodeURIComponent(JSON.stringify({ rasterFunction: 'Hillshade', rasterFunctionArguments: { HillshadeType: 1, ZFactor: 8 } }));
+  function lidarTileUrl(z, x, y) {
+    const res = (MERC * 2) / Math.pow(2, z);
+    const x0 = -MERC + x * res, y1 = MERC - y * res;
+    const f = (n) => n.toFixed(3);
+    return LIDAR_URL + '?bbox=' + [f(x0), f(y1 - res), f(x0 + res), f(y1)].join(',') +
+      '&bboxSR=3857&imageSR=3857&size=256,256&format=jpgpng&renderingRule=' + LIDAR_RULE + '&f=image';
   }
 
   // Pin types, grouped by section in the editor's Type list. Keys are saved with each pin, so never rename one.
@@ -208,22 +245,20 @@
     zoom: savedView ? savedView.zoom : 7
   });
 
-  const baseTiles = (s) => L.tileLayer(s.url, {
-    attribution: s.attr,
-    maxNativeZoom: s.maxNative,
-    maxZoom: 18,
-    bounds: MN.pad(0.1),
-    crossOrigin: true
-  });
+  const BoxTiles = L.TileLayer.extend({ getTileUrl(c) { return tileUrl(this.options.key, this._getZoomForUrl(), c.x, c.y); } });
+  function baseTiles(s, key) {
+    const opts = { attribution: s.attr, maxNativeZoom: s.maxNative, maxZoom: 18, bounds: MN.pad(0.1), crossOrigin: true };
+    return s.export ? new BoxTiles('', Object.assign({ key }, opts)) : L.tileLayer(s.url, opts);
+  }
   const layers = {};
-  for (const [key, s] of Object.entries(SOURCES)) layers[key] = baseTiles(s);
+  for (const [key, s] of Object.entries(SOURCES)) layers[key] = baseTiles(s, key);
 
   // "Satellite + trails": the clean satellite photo with only the orange trail lines copied on
   // from the Hybrid (Imagery Topo) image of the same square. Hybrid also tints public land white
   // and adds names and contours; this keeps the photo untouched. Both images come from the same
   // USGS server, so the service worker caches both and offline saves include both.
   const TRAIL_PARTS = ['sat', 'hybrid'];
-  const tileUrl = (key, z, x, y) => SOURCES[key].url.replace('{z}', z).replace('{y}', y).replace('{x}', x);
+  const tileUrl = (key, z, x, y) => SOURCES[key].export ? lidarTileUrl(z, x, y) : SOURCES[key].url.replace('{z}', z).replace('{y}', y).replace('{x}', x);
   const isTrailPixel = (r, g, b) => r > 170 && r - g > 45 && r - b > 70; // the US Topo trail orange
   // Make everything transparent except trail lines. Trail names use the same orange, so orange
   // pixels are grouped into connected shapes and small ones (letters) are dropped. A shape that
@@ -317,13 +352,14 @@
       maxZoom: 18,
       bounds: o.box.pad(0.1),
       opacity: o.opacity,
-      zIndex: 5
+      className: o.className || '',
+      zIndex: o.zIndex || 5
     });
   }
   recall(STORE.overlays, []).forEach((k) => { if (overlayLayers[k]) overlayLayers[k].addTo(map); });
   const overlayControl = {};
   for (const [key, o] of Object.entries(OVERLAYS)) overlayControl[o.name] = overlayLayers[key];
-  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Satellite + trails': layers.trails, 'Hybrid (names, contours)': layers.hybrid, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
+  const layerControl = L.control.layers({ 'Topo': layers.topo, 'Satellite': layers.sat, 'Satellite + trails': layers.trails, 'Hybrid (names, contours)': layers.hybrid, 'Lidar (shaded relief)': layers.lidar, 'Street': layers.street }, overlayControl, { position: 'topright' }).addTo(map);
   const saveOverlays = () => store(STORE.overlays, Object.keys(overlayLayers).filter((k) => map.hasLayer(overlayLayers[k])));
   map.on('overlayadd', saveOverlays);
   map.on('overlayremove', saveOverlays);
@@ -332,6 +368,7 @@
   const escHtml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
   map.on('overlayadd', (e) => {
     if (e.layer === overlayLayers.parcels && map.getZoom() < OVERLAYS.parcels.minZoom) toast('Zoom in closer to see parcel lines. Tap a parcel to see its owner.', 4000);
+    if (e.layer === overlayLayers.lidar && map.getZoom() < OVERLAYS.lidar.minZoom) toast('Zoom in closer to see the lidar shading.', 4000);
   });
   let parcelAsk = 0;
   map.on('click', async (e) => {
@@ -1740,6 +1777,7 @@
   function v3Style(key) {
     const src = (k) => k === 'trails'
       ? { type: 'raster', tiles: ['woodstrails://{z}/{x}/{y}'], tileSize: 256, maxzoom: SOURCES.sat.maxNative, bounds: mnBox, attribution: SOURCES.sat.attr }
+      : SOURCES[k].export ? { type: 'raster', tiles: ['woodsbase://' + k + '/{z}/{x}/{y}'], tileSize: 256, maxzoom: SOURCES[k].maxNative, bounds: mnBox, attribution: SOURCES[k].attr }
       : Object.assign({ type: 'raster', tiles: [SOURCES[k].url], tileSize: 256, maxzoom: SOURCES[k].maxNative, attribution: SOURCES[k].attr }, k === 'street' ? {} : { bounds: mnBox });
     const sources = {
       base: src(key),
@@ -1750,7 +1788,7 @@
     };
     const lyrs = [
       { id: 'bg', type: 'background', paint: { 'background-color': '#d9dfd0' } },
-      { id: 'base', type: 'raster', source: 'base', paint: { 'raster-fade-duration': 100 } },
+      { id: 'base', type: 'raster', source: 'base', paint: Object.assign({ 'raster-fade-duration': 100 }, {}) },
       { id: 'shade', type: 'hillshade', source: 'demShade', layout: { visibility: v3Shade ? 'visible' : 'none' },
         paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#2b2b2b', 'hillshade-highlight-color': '#ffffff', 'hillshade-illumination-direction': 315 } }
     ];
@@ -1759,7 +1797,7 @@
       if (!map.hasLayer(overlayLayers[k])) continue;
       const b = o.box.pad(0.1);
       sources['ov_' + k] = { type: 'raster', tiles: ['woodsov://' + k + '/{z}/{x}/{y}'], tileSize: 256, minzoom: Math.max(0, (o.minZoom || 0)), maxzoom: 17, bounds: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], attribution: o.attr || 'MN DNR' };
-      lyrs.push({ id: 'ov_' + k, type: 'raster', source: 'ov_' + k, paint: { 'raster-opacity': o.opacity } });
+      lyrs.push({ id: 'ov_' + k, type: 'raster', source: 'ov_' + k, paint: { 'raster-opacity': o.opacity3d || o.opacity } });
     }
     lyrs.push(
       { id: 'fill', type: 'fill', source: 'paths', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': ['get', 'fo'] } },
@@ -1791,6 +1829,13 @@
       tile.width = tile.height = 256;
       if (!(await blendTrailTile(tile, z, x, y))) throw new Error('no satellite tile');
       return { data: await createImageBitmap(tile) };
+    });
+    // Lidar squares, asked for by their box at the same address as on the 2D map (so saved ones work offline).
+    ml.addProtocol('woodsbase', async (params, abort) => {
+      const [k, z, x, y] = params.url.replace('woodsbase://', '').split('/');
+      const res = await fetch(tileUrl(k, +z, +x, +y), { signal: abort.signal });
+      if (!res.ok) throw new Error('tile ' + res.status);
+      return { data: await res.arrayBuffer() };
     });
     // Public land and parcel squares: the exact addresses the 2D map uses, so the offline copies match.
     ml.addProtocol('woodsov', async (params, abort) => {
@@ -2216,7 +2261,7 @@
   const demTileUrl = (z, x, y) => DEM_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
   const terrainTileCount = (a, zMax) => countTiles(a, Math.min(zMax, DEM_MAX_ZOOM));
   function overlayTileCount(a, zMax) {
-    return countTiles(a, Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM)) * Object.keys(OVERLAYS).length;
+    return countTiles(a, Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM)) * Object.values(OVERLAYS).filter((o) => !o.noSave).length;
   }
 
   function updateEstimate() {
@@ -2250,13 +2295,14 @@
       const sat = keys.filter((k) => k.url.includes('USGSImageryOnly')).length;
       const dnr = keys.filter((k) => k.url.includes('gis.dnr.state.mn.us') || k.url.includes('plan_parcels_open')).length;
       const hybrid = keys.filter((k) => k.url.includes('USGSImageryTopo')).length;
+      const lidar = keys.filter((k) => k.url.includes('3DEPElevation/ImageServer/exportImage')).length;
       const dem = keys.filter((k) => k.url.includes('/terrarium/')).length;
       let extra = '';
       if (navigator.storage && navigator.storage.estimate) {
         const est = await navigator.storage.estimate();
         extra = ' · phone storage used by app: ' + Math.round((est.usage || 0) / 1048576) + ' MB';
       }
-      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + dnr.toLocaleString() + ' public-land & parcel, ' + dem.toLocaleString() + ' 3D terrain tiles' + extra;
+      $('offStored').textContent = 'Saved: ' + topo.toLocaleString() + ' topo, ' + sat.toLocaleString() + ' satellite, ' + hybrid.toLocaleString() + ' hybrid, ' + lidar.toLocaleString() + ' lidar, ' + dnr.toLocaleString() + ' public-land & parcel, ' + dem.toLocaleString() + ' 3D terrain tiles' + extra;
     } catch (e) {
       $('offStored').textContent = '';
     }
@@ -2287,6 +2333,7 @@
       // Probe first: if the DNR server won't allow its images to be saved, skip those layers cleanly.
       const ovUrls = [];
       for (const o of Object.values(OVERLAYS)) {
+        if (o.noSave) continue;
         if (!o.box.intersects(L.latLngBounds([a.s, a.w], [a.n, a.e]))) continue;
         for (let z = Math.max(8, o.minZoom || 0); z <= Math.min(zMax, OVERLAY_MAX_SAVE_ZOOM); z++) {
           const r = tileRange(a, z);
