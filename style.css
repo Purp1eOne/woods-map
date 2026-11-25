@@ -579,3 +579,75 @@ body.drawing #bar, body.drawing #fab, body.drawing #filterChip, body.drawing #na
 .prof-fill { fill: var(--accent); opacity: .3; }
 .prof-line { fill: none; stroke: var(--accent-line); stroke-width: 2; }
 .prof-t { fill: var(--muted); font: 600 10px system-ui, sans-serif; }
+
+/* ---- Compass mode: the map turns with the phone so the way you face is up ---- */
+.fab.on { background: var(--accent); color: #fff; }
+/* #map becomes a square as wide as the screen's diagonal and turns about its center (set from app.js) */
+body.compass #map { transform-origin: 50% 50%; will-change: transform; }
+body.compass .leaflet-control-container, body.compass #crosshair { display: none; }
+/* Pins, ring labels and popups turn back so they stay upright */
+.unrot { transform: rotate(var(--unrot, 0deg)); }
+body.compass .leaflet-popup-content-wrapper,
+body.compass .leaflet-popup-close-button { transform: rotate(var(--unrot, 0deg)); }
+body.compass .leaflet-popup-tip-container { visibility: hidden; }
+
+.me-head { position: absolute; left: 9px; top: 9px; width: 0; height: 0; pointer-events: none; }
+.me-head[hidden] { display: none; }
+.me-cone {
+  position: absolute; left: -34px; bottom: 0; width: 68px; height: 74px;
+  background: linear-gradient(to top, rgba(41, 121, 255, .55), rgba(41, 121, 255, 0));
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+}
+.me-beam { position: absolute; left: -1px; bottom: 0; width: 2px; height: 2400px; background: repeating-linear-gradient(to top, #2979ff 0 10px, transparent 10px 16px); opacity: .85; }
+.me-wrap { position: relative; width: 18px; height: 18px; }
+.me-wrap .me-dot { position: absolute; inset: 0; box-sizing: border-box; }
+
+.ringlbl {
+  position: absolute; left: 0; top: 0; transform: translate(6px, -110%);
+  font: 700 12px system-ui, sans-serif; white-space: nowrap; color: #fff;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
+
+#compassHud {
+  align-self: stretch;
+  background: var(--chip-bg);
+  color: var(--ink);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px var(--shadow);
+  overflow: hidden;
+  max-width: 420px;
+}
+#cTape { position: relative; height: 30px; overflow: hidden; -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent); }
+#cTapeIn { position: absolute; left: 0; top: 0; height: 30px; will-change: transform; }
+#cTapeIn i { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--muted); }
+#cTapeIn i.mid { height: 10px; background: var(--ink); }
+#cTapeIn b { position: absolute; top: 3px; transform: translateX(-50%); font: 600 11px system-ui, sans-serif; color: var(--muted); }
+#cTapeIn b.card { color: var(--ink); font-size: 13px; font-weight: 800; }
+#cTapeIn b.north { color: #ff6b5a; }
+#cTapeMark { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #2979ff; }
+#cRead { display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 0 8px 5px; }
+#cDeg { font: 800 18px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+#cNote { font-size: 12px; color: var(--muted); }
+#cNote.warn { color: #e8b53a; }
+
+#compassBar {
+  position: fixed;
+  left: 8px; right: 8px;
+  bottom: calc(var(--bar-h) + var(--safe-b) + 20px);
+  z-index: 600;
+  display: flex; align-items: center; gap: 6px;
+  max-width: 440px; margin: 0 auto;
+  padding: 6px 8px;
+  background: var(--fab-bg);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+#compassBar .cblbl { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: auto; }
+#compassBar button { min-width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--btn-line); background: var(--btn); color: var(--ink); font-size: 18px; font-weight: 700; padding: 0 10px; }
+#compassBar button.primary { background: var(--accent); border-color: var(--accent-line); color: #fff; font-size: 15px; }
+#compassBar .cyd { display: flex; align-items: center; gap: 4px; font-weight: 700; }
+#compassBar input { width: 64px; height: 38px; box-sizing: border-box; text-align: center; font: 700 16px system-ui, sans-serif; border-radius: 8px; border: 1px solid var(--btn-line); background: var(--panel-2); color: var(--ink); }
+body.compass #toast { bottom: calc(var(--bar-h) + var(--safe-b) + 82px); }
+#cAttr { position: fixed; left: 4px; bottom: calc(var(--bar-h) + var(--safe-b) + 2px); z-index: 550; max-width: 60vw; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: var(--attr-bg); color: var(--attr-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#cAttr a { color: var(--attr-link); }
+body.drawing #compassBar, body.drawing #compassHud { display: none; }

@@ -14,7 +14,7 @@
     if (inIL(lat, lng)) return { state: 'Illinois', text: 'Illinois rules (17 Ill. Adm. Code 650.10) allow deer hunting from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, turkey and furbearers, have different hours, and rules change. Check the current IDNR regulations before you hunt.' };
     return { state: 'Minnesota', text: 'Minnesota statute lets big game be taken from one-half hour before sunrise to one-half hour after sunset. Other seasons and species, such as waterfowl, have different hours, and rules change. Check the current DNR regulations before you hunt.' };
   }
-  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
+  const STORE = { pins: 'woodsmap.pins.v1', view: 'woodsmap.view.v1', layer: 'woodsmap.layer.v1', overlays: 'woodsmap.overlays.v1', theme: 'woodsmap.theme.v1', pace: 'woodsmap.pace.v1', compassYd: 'woodsmap.compassYd.v1', tracks: 'woodsmap.tracks.v1', shapes: 'woodsmap.shapes.v1', snap: 'woodsmap.snap.v1', hiddenTypes: 'woodsmap.hiddenTypes.v1', hiddenGroups: 'woodsmap.hiddenGroups.v1', dpa: 'woodsmap.dpa.v1' };
   const TILE_CACHE = 'woods-tiles-v1';
   const MAX_TILES = 8000;
   const AVG_KB = 30;
@@ -196,10 +196,11 @@
 
   // ---------- Map ----------
   const savedView = recall(STORE.view, null);
+  const MAP_BOUNDS = MN.pad(0.1);
   const map = L.map('map', {
     zoomControl: false,
     attributionControl: true,
-    maxBounds: MN.pad(0.1),
+    maxBounds: MAP_BOUNDS,
     maxBoundsViscosity: 0.9,
     minZoom: 6,
     maxZoom: 18,
@@ -458,7 +459,7 @@
     const c = CATS[p.cat] || CATS.other;
     return L.divIcon({
       className: '',
-      html: '<div class="pin" style="--c:' + pinColor(p) + '"><span>' + c.icon + '</span></div>',
+      html: '<div class="unrot" style="transform-origin:18px 43px"><div class="pin" style="--c:' + pinColor(p) + '"><span>' + c.icon + '</span></div></div>',
       iconSize: [36, 36],
       iconAnchor: [18, 43],
       popupAnchor: [0, -40]
@@ -893,6 +894,7 @@
   }
   function startDraw(kind, existing) {
     if (draw) stopDraw();
+    if (cmp.on) stopCompass();
     closeSheets();
     map.closePopup();
     draw = { kind, shape: existing || null, pts: [], segs: [], vtx: [], preview: null, busy: 0 };
@@ -1460,6 +1462,257 @@
   $('btnPins').addEventListener('click', () => { $('pinSearch').value = ''; renderShowBox(); renderList(); showSheet('pinsSheet'); });
   $('pinSearch').addEventListener('input', renderList);
 
+  // ---------- Compass mode (like onX): the map turns with the phone so the way you face is up ----------
+  // Leaflet can't rotate, so #map becomes a square as wide as the screen's diagonal (no bare corners
+  // while it turns) and is spun with CSS. Taps are turned back into map coordinates below, so
+  // long-press pins and parcel taps still land in the right spot. The map stays centered on you.
+  const cmp = { on: false, heading: null, target: null, src: null, raf: 0, gotEvt: false, rings: [], labels: [], ringKey: '', noSensorTimer: null };
+  const deg = (r) => r * 180 / Math.PI;
+  function destPoint(a, brg, m) {
+    const d = m / R, b = rad(brg), la = rad(a.lat), lo = rad(a.lng);
+    const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+    const lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+    return { lat: deg(la2), lng: deg(lo2) };
+  }
+  const norm360 = (h) => ((h % 360) + 360) % 360;
+  const screenAngle = () => (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (+window.orientation || 0);
+
+  // Map taps: undo the turn so Leaflet gets the point it would have seen on an unturned map.
+  const plainMouseToContainer = map.mouseEventToContainerPoint;
+  map.mouseEventToContainerPoint = function (e) {
+    if (!cmp.on || cmp.heading === null) return plainMouseToContainer.call(this, e);
+    const r = this._container.getBoundingClientRect(), size = this.getSize();
+    const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const h = rad(cmp.heading), c = Math.cos(h), s = Math.sin(h);
+    return L.point(dx * c - dy * s + size.x / 2, dx * s + dy * c + size.y / 2);
+  };
+
+  // Bearing strip: a tick every 5°, a number every 15°, letters every 45°. Drawn once from -180° to 540°.
+  const TAPE_PX = 3;
+  (function buildTape() {
+    const NAMES = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+    let html = '';
+    for (let d = -180; d <= 540; d += 5) {
+      const x = (d + 180) * TAPE_PX, n = norm360(d);
+      html += '<i' + (d % 15 === 0 ? ' class="mid"' : '') + ' style="left:' + x + 'px"></i>';
+      if (NAMES[n] !== undefined) html += '<b class="card' + (n === 0 ? ' north' : '') + '" style="left:' + x + 'px">' + NAMES[n] + '</b>';
+      else if (d % 15 === 0) html += '<b style="left:' + x + 'px">' + n + '</b>';
+    }
+    $('cTapeIn').innerHTML = html;
+  })();
+
+  function layoutCompass() {
+    const el = $('map');
+    if (!cmp.on) {
+      ['left', 'top', 'width', 'height', 'right', 'bottom', 'transform'].forEach((k) => el.style.removeProperty(k));
+      el.style.removeProperty('--unrot');
+      return;
+    }
+    const bar = $('bar').getBoundingClientRect();
+    const w = window.innerWidth, h = bar.top; // the map normally fills the screen above the bottom bar
+    const D = Math.ceil(Math.hypot(w, h)) + 4;
+    Object.assign(el.style, { left: (w - D) / 2 + 'px', top: (h - D) / 2 + 'px', width: D + 'px', height: D + 'px', right: 'auto', bottom: 'auto' });
+  }
+
+  function onOrient(e) {
+    let h = null;
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      h = e.webkitCompassHeading; // iPhone: already a compass heading
+      const acc = e.webkitCompassAccuracy;
+      cmp.calib = typeof acc === 'number' && (acc < 0 || acc > 25);
+    } else if ((e.absolute || e.type === 'deviceorientationabsolute') && typeof e.alpha === 'number') {
+      h = 360 - e.alpha; // Android: alpha counts the other way round from north
+    } else return;
+    if (!cmp.gotEvt) { cmp.gotEvt = true; cmp.src = 'compass'; clearTimeout(cmp.noSensorTimer); }
+    setTargetHeading(h + screenAngle());
+  }
+  function setTargetHeading(h) {
+    cmp.target = norm360(h);
+    if (cmp.heading === null) cmp.heading = cmp.target;
+    if (!cmp.raf) cmp.raf = requestAnimationFrame(stepHeading);
+  }
+  // Ease toward the newest reading the short way round, so the map doesn't jitter or spin the long way.
+  function stepHeading() {
+    cmp.raf = 0;
+    if (!cmp.on || cmp.target === null) return;
+    const diff = ((cmp.target - cmp.heading + 540) % 360) - 180;
+    cmp.heading = Math.abs(diff) < 0.3 ? cmp.target : norm360(cmp.heading + diff * 0.3);
+    applyHeading();
+    if (cmp.heading !== cmp.target) cmp.raf = requestAnimationFrame(stepHeading);
+  }
+  function applyHeading() {
+    const h = cmp.heading, el = $('map');
+    if (h === null) return;
+    el.style.transform = 'rotate(' + (-h) + 'deg)';
+    el.style.setProperty('--unrot', h + 'deg');
+    const W = $('cTape').clientWidth;
+    $('cTapeIn').style.transform = 'translateX(' + (W / 2 - (h + 180) * TAPE_PX) + 'px)';
+    $('cDeg').textContent = Math.round(h) % 360 + '° ' + compass(h);
+    const note = $('cNote');
+    note.textContent = cmp.src === 'gps' ? 'from walking direction' : cmp.calib ? 'move phone in a figure 8' : 'magnetic';
+    note.classList.toggle('warn', !!cmp.calib);
+    showHead();
+    placeRingLabels();
+  }
+  function showHead() {
+    const head = meDot && meDot.getElement() && meDot.getElement().querySelector('.me-head');
+    if (!head) return;
+    head.hidden = !cmp.on || cmp.heading === null;
+    head.style.transform = 'rotate(' + (cmp.heading || 0) + 'deg)';
+  }
+
+  // Distance rings around you in yards (or miles when zoomed out), about 3 to 5 of them on screen.
+  const RING_STEPS = [10, 25, 50, 100, 250, 500, 880, 1760, 3520, 8800, 17600, 44000];
+  const ydLabel = (yd) => yd < 1760 ? yd + ' yd' : (yd / 1760) + ' mi';
+  function drawRings() {
+    if (!cmp.on || !me) return clearRings();
+    const bar = $('bar').getBoundingClientRect();
+    const halfPx = Math.min(window.innerWidth, bar.top) / 2 * 0.95;
+    const mpp = 40075016.686 * Math.cos(rad(me.lat)) / Math.pow(2, map.getZoom() + 8);
+    const maxYd = halfPx * mpp / 0.9144;
+    const step = RING_STEPS.find((s) => maxYd / s <= 5) || RING_STEPS[RING_STEPS.length - 1];
+    const n = Math.min(5, Math.max(1, Math.floor(maxYd / step)));
+    const key = step + ':' + n;
+    if (key !== cmp.ringKey) {
+      clearRings();
+      cmp.ringKey = key;
+      for (let i = 1; i <= n; i++) {
+        const yd = step * i;
+        cmp.rings.push(L.circle([me.lat, me.lng], { radius: yd * 0.9144, color: '#fff', weight: 1.5, opacity: 0.8, fill: false, dashArray: '4 6', interactive: false }).addTo(map));
+        cmp.labels.push(L.marker([me.lat, me.lng], { icon: L.divIcon({ className: '', html: '<div class="unrot" style="transform-origin:0 0"><span class="ringlbl">' + ydLabel(yd) + '</span></div>', iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(map));
+        cmp.labels[cmp.labels.length - 1].yd = yd;
+      }
+    } else cmp.rings.forEach((c) => c.setLatLng([me.lat, me.lng]));
+    placeRingLabels();
+  }
+  function placeRingLabels() {
+    if (!me || !cmp.labels.length) return;
+    const h = cmp.heading || 0;
+    cmp.labels.forEach((m) => { const p = destPoint(me, h, m.yd * 0.9144); m.setLatLng([p.lat, p.lng]); });
+  }
+  function clearRings() {
+    cmp.rings.concat(cmp.labels).forEach((l) => map.removeLayer(l));
+    cmp.rings = []; cmp.labels = []; cmp.ringKey = '';
+  }
+
+  // Called from onPos on every GPS fix.
+  function compassOnPos(pos) {
+    if (!cmp.on) return;
+    // No compass sensor: turn the map to the way you're walking instead.
+    if (cmp.src === 'gps' && pos.coords.speed > 0.6 && typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) setTargetHeading(pos.coords.heading);
+    map.setView([me.lat, me.lng], map.getZoom(), { animate: false });
+    drawRings();
+    showHead();
+  }
+
+  async function startCompass() {
+    if (cmp.on) return;
+    if (draw) return toast('Finish or cancel drawing first.');
+    // iPhone asks permission, and only from a tap.
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        if (await DeviceOrientationEvent.requestPermission() !== 'granted') return toast('Compass is blocked. Allow Motion & Orientation access for this site in Settings.', 5000);
+      } catch (e) { /* older iPhones: no prompt needed */ }
+    }
+    map.closePopup();
+    cmp.on = true; cmp.gotEvt = false; cmp.src = null; cmp.heading = null; cmp.target = null; cmp.calib = false;
+    document.body.classList.add('compass');
+    $('fabCompass').classList.add('on');
+    $('fabCompass').setAttribute('aria-pressed', 'true');
+    $('compassHud').hidden = false;
+    $('compassBar').hidden = false;
+    $('cDeg').textContent = 'Finding north…';
+    $('cNote').textContent = '';
+    copyAttribution();
+    $('cAttr').hidden = false;
+    // Locked to you: no dragging; pinch and wheel zoom about the center; double-tap zoom off.
+    map.dragging.disable();
+    map.doubleClickZoom.disable();
+    map.options.touchZoom = 'center';
+    map.options.scrollWheelZoom = 'center';
+    // The turned map is much bigger than the screen, so the edge-of-map limit would pull it off you.
+    map.setMaxBounds(null);
+    const c = map.getCenter();
+    layoutCompass();
+    map.invalidateSize({ animate: false });
+    map.setView(me ? [me.lat, me.lng] : c, Math.max(map.getZoom(), 15), { animate: false });
+    if (watchId === null) startGPS();
+    window.addEventListener('deviceorientationabsolute', onOrient);
+    window.addEventListener('deviceorientation', onOrient);
+    cmp.noSensorTimer = setTimeout(() => {
+      if (!cmp.on || cmp.gotEvt) return;
+      cmp.src = 'gps';
+      $('cDeg').textContent = 'No compass';
+      $('cNote').textContent = 'start walking';
+      toast('This phone has no compass the app can read, so the map turns to the way you walk.', 5000);
+    }, 2500);
+    drawRings();
+  }
+  function stopCompass() {
+    if (!cmp.on) return;
+    cmp.on = false;
+    clearTimeout(cmp.noSensorTimer);
+    window.removeEventListener('deviceorientationabsolute', onOrient);
+    window.removeEventListener('deviceorientation', onOrient);
+    if (cmp.raf) cancelAnimationFrame(cmp.raf);
+    cmp.raf = 0;
+    map.closePopup();
+    const c = map.getCenter();
+    document.body.classList.remove('compass');
+    $('fabCompass').classList.remove('on');
+    $('fabCompass').setAttribute('aria-pressed', 'false');
+    $('compassHud').hidden = true;
+    $('compassBar').hidden = true;
+    $('cAttr').hidden = true;
+    layoutCompass();
+    map.dragging.enable();
+    map.doubleClickZoom.enable();
+    map.options.touchZoom = true;
+    map.options.scrollWheelZoom = true;
+    map.invalidateSize({ animate: false });
+    map.setMaxBounds(MAP_BOUNDS);
+    map.setView(c, map.getZoom(), { animate: false });
+    clearRings();
+    cmp.heading = null;
+    showHead();
+  }
+  $('fabCompass').addEventListener('click', () => { if (cmp.on) stopCompass(); else startCompass(); });
+  function copyAttribution() {
+    const a = document.querySelector('.leaflet-control-attribution');
+    $('cAttr').innerHTML = a ? a.innerHTML : '';
+  }
+  map.on('baselayerchange overlayadd overlayremove', () => { if (cmp.on) setTimeout(copyAttribution, 0); });
+  map.on('zoomend', () => { if (cmp.on) drawRings(); });
+  window.addEventListener('resize', () => {
+    if (!cmp.on) return;
+    layoutCompass();
+    map.invalidateSize({ animate: false });
+    if (me) map.setView([me.lat, me.lng], map.getZoom(), { animate: false });
+    applyHeading();
+  });
+  // A pin tapped in compass mode opens its popup as usual; the popup turns upright (CSS).
+
+  // Mark ahead (rangefinder): drop a pin a set number of yards away in the direction you face.
+  let markYd = +recall(STORE.compassYd, 100) || 100;
+  $('cYd').value = String(markYd);
+  function setMarkYd(v) {
+    markYd = Math.min(2000, Math.max(5, Math.round(+v || 0)));
+    $('cYd').value = String(markYd);
+    store(STORE.compassYd, markYd);
+  }
+  $('cYd').addEventListener('change', (e) => setMarkYd(e.target.value));
+  const ydStep = () => markYd < 100 ? 5 : markYd < 300 ? 10 : 25;
+  $('cYdMinus').addEventListener('click', () => setMarkYd(markYd - ydStep()));
+  $('cYdPlus').addEventListener('click', () => setMarkYd(markYd + ydStep()));
+  $('cMark').addEventListener('click', () => {
+    setMarkYd($('cYd').value);
+    if (!me) return toast('Waiting for GPS…');
+    if (cmp.heading === null) return toast(cmp.src === 'gps' ? 'Walk a few steps so the app knows which way you are facing.' : 'Waiting for the compass…');
+    const h = Math.round(cmp.heading) % 360; // freeze the bearing at the moment of the tap
+    const p = destPoint(me, h, markYd * 0.9144);
+    openEditor({ lat: p.lat, lng: p.lng, cat: 'buck', name: '', notes: 'Marked ' + markYd + ' yd ' + compass(h) + ' (' + h + '°) from where I stood.' }, true);
+  });
+
   // ---------- GPS ----------
   let me = null, watchId = null, meDot = null, meAcc = null, centerOnFix = false;
 
@@ -1475,7 +1728,7 @@
     const ll = [lat, lng];
     if (!meDot) {
       meAcc = L.circle(ll, { radius: accuracy, color: '#2979ff', weight: 1, fillOpacity: 0.1, interactive: false }).addTo(map);
-      meDot = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
+      meDot = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me-wrap"><div class="me-head" hidden><div class="me-beam"></div><div class="me-cone"></div></div><div class="me-dot"></div></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
     } else {
       meAcc.setLatLng(ll).setRadius(accuracy);
       meDot.setLatLng(ll);
@@ -1484,6 +1737,7 @@
       centerOnFix = false;
       map.setView(ll, Math.max(map.getZoom(), 15));
     }
+    compassOnPos(pos);
     updateNav();
     addTrackPoint(lat, lng, accuracy);
     if (!firstFix) { firstFix = true; updateSunChip(); }

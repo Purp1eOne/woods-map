@@ -26,6 +26,10 @@
       <span id="navtext"></span>
       <button id="navStop" aria-label="Stop navigating">✕</button>
     </div>
+    <div id="compassHud" hidden>
+      <div id="cTape" aria-hidden="true"><div id="cTapeIn"></div><div id="cTapeMark"></div></div>
+      <div id="cRead"><span id="cDeg">—</span><span id="cNote"></span></div>
+    </div>
     <button id="filterChip" hidden></button>
     <div id="drawbar" hidden>
       <div id="drawText"></div>
@@ -42,8 +46,18 @@
 
   <div id="fab">
     <button id="fabTrack" class="fab" aria-label="Record my walk"><span class="fi">⏺</span><span id="fabTrackLbl">Track</span></button>
+    <button id="fabCompass" class="fab" aria-label="Compass mode" aria-pressed="false"><span class="fi">🧭</span><span>Compass</span></button>
     <button id="fabTruck" class="fab" aria-label="Back to truck"><span class="fi">🛻</span><span>Truck</span></button>
   </div>
+
+  <div id="compassBar" hidden>
+    <span class="cblbl">Mark ahead</span>
+    <button id="cYdMinus" aria-label="Closer">−</button>
+    <label class="cyd"><input id="cYd" type="number" inputmode="numeric" min="5" max="2000" step="5" value="100" aria-label="Yards ahead"> yd</label>
+    <button id="cYdPlus" aria-label="Farther">+</button>
+    <button id="cMark" class="primary">📍 Mark</button>
+  </div>
+  <div id="cAttr" hidden></div>
 
   <nav id="bar">
     <button id="btnLocate"><span class="ic">◎</span>Locate</button>
@@ -176,6 +190,7 @@
         <li><b>Pin me</b> drops a pin where you are standing.</li>
         <li><b>Pin center</b> drops a pin at the crosshair. Pan and zoom the map first. This is how to mark a spot you are not standing on. The numbers at the top left are the crosshair position.</li>
         <li>Pressing and holding on the map also starts a pin.</li>
+        <li>To mark something you can see but aren't standing on, such as a deer you ranged, use <b>Mark</b> in compass mode (see <b>Compass mode</b> below).</li>
       </ul>
       <p>Give it a name, a type and notes. There are about 25 types, grouped into stands, deer sign (scrapes, rubs, beds, trails, funnels, sightings, sheds), food and water, turkeys and ducks, and access (truck, gate, entry route, property corner, hazard). Pick a <b>color</b> too, or leave it on the type's own color. Colors are handy for sorting spots by year or by who found them. Tap <b>Add photo</b> to take or attach a picture, such as a trail cam shot or a big rub. A <b>range ring</b> draws a 30 to 200 yard circle around the pin. Trail cameras and harvests also keep a date, and cameras show how long ago you checked them.</p>
 
@@ -199,8 +214,39 @@
         <li><b>Go there</b> shows a yellow bar with distance, walking time and compass direction, plus a dashed line on the map. Tap the ✕ to stop.</li>
         <li>The <b>Truck</b> button starts Go there to your nearest pin of type Parking / truck.</li>
         <li>In <b>Pins</b>, <b>Measure</b> gives distance and time between any two points.</li>
+        <li><b>Compass</b> on the right turns the map to face the way you do. See <b>Compass mode</b> below.</li>
       </ul>
       <p>Times are straight-line at the pace you set under <b>More</b>. Brush, water and hills make a real walk longer, so use a slower pace for rough ground.</p>
+
+      <h3>Compass mode</h3>
+      <p>Compass mode turns the map with your phone, so whatever is in front of you is at the top of the screen. Use it to line up the map with the woods, check which way a ridge or trail runs, or mark where you saw a deer.</p>
+      <ol>
+        <li>Tap <b>Compass</b> on the right side (the 🧭 button). It turns green while it's on. On an iPhone, the first time, tap <b>Allow</b> when it asks about Motion &amp; Orientation.</li>
+        <li>Hold the phone flat in front of you, like you're reading a map, and turn your body. The map turns with you.</li>
+        <li>To go back to the normal map with north at the top, tap <b>Compass</b> again.</li>
+      </ol>
+      <p><b>What you see:</b></p>
+      <ul>
+        <li><b>The blue beam</b> from your dot is the direction the top of the phone is pointing. The blue fan shows roughly what's in front of you.</li>
+        <li><b>The white dashed rings</b> are distances from you in yards, labeled along the beam. They change as you zoom: zoomed in they're 10 to 50 yards apart, zoomed out 100 yards or more.</li>
+        <li><b>The strip at the top</b> slides like a real compass. The big number is your bearing in degrees, with the direction (for example <b>285° WNW</b>). N is in red.</li>
+      </ul>
+      <p>The map stays centered on you and follows you as you walk, so you can't drag it. Pinch to zoom in or out. Pins, lines, routes and walks still show, and you can tap them. The Layers button is hidden while compass mode is on, so pick your map first.</p>
+      <p><b>Mark a spot with a rangefinder</b> (the bar above the bottom buttons):</p>
+      <ol>
+        <li>Range the deer, rub or tree with your rangefinder.</li>
+        <li>Type that distance in the yards box, or use <b>−</b> and <b>+</b>.</li>
+        <li>Point the top of the phone straight at it. Check that the blue beam runs toward it.</li>
+        <li>Tap <b>📍 Mark</b>. A new pin opens, that many yards out along the beam. It starts as a Buck sighting, with the distance and bearing in the notes. Change the name or type and tap <b>Save</b>.</li>
+      </ol>
+      <p>Later, use <b>Go there</b> on that pin to walk straight to the spot, for example to find blood or a downed deer. The app remembers the last distance you used. Your own GPS can be off by 10 to 30 yards in the woods, so the pin will be too.</p>
+      <p><b>If the bearing looks wrong:</b></p>
+      <ul>
+        <li>Move the phone in a slow figure 8 a few times to recalibrate. If the strip says <b>move phone in a figure 8</b>, the phone is asking for this.</li>
+        <li>Magnets and steel throw a compass off: magnetic phone cases and mounts, bino harness clips, a truck, a tree stand or a gun barrel. Step away and hold the phone flat.</li>
+        <li>Check it against a real compass now and then if you're relying on it.</li>
+      </ul>
+      <p>Bearings are magnetic, like a hand compass. In Minnesota that is within about 2° of true north. In Illinois it is about 3° to 4° west. Compass mode works with no signal, since it only uses the phone's own sensors and GPS. Some phones have no compass. On those the strip says <b>No compass</b>, and the map turns to the direction you're walking once you start moving.</p>
 
       <h3>Recording your walk</h3>
       <p>Tap <b>Track</b>, then <b>Start recording</b>. It records the path you walk so you can follow it back out. The screen stays on while it records, and it only records while the app is open. <b>Pause</b> stops counting while you sit, for example on stand. Saved walks show on the map as a dashed line and stay there until you hide them.</p>
